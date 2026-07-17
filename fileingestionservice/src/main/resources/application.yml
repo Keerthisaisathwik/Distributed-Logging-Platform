@@ -1,0 +1,21 @@
+spring:
+  application:
+    name: fileingestionservice
+
+  kafka:
+    bootstrap-servers: kafka:9092
+
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+      properties:
+        batch.size: 65536
+        linger.ms: 10
+        compression.type: lz4
+        enable.idempotence: true
+        acks: all
+
+kafka:
+  topic:
+    logs-raw: logs.raw
