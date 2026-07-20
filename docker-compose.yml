@@ -46,6 +46,7 @@ services:
         jobmanager.rpc.address: jobmanager
     volumes:
       - ./log-processing-service/target/log-processing-service-1.0-SNAPSHOT.jar:/opt/flink/log-processing-service-1.0-SNAPSHOT.jar
+      - ./flink-checkpoints:/opt/flink/checkpoints
     restart: unless-stopped
 
   taskmanager:
@@ -54,6 +55,8 @@ services:
     depends_on:
       - jobmanager
     command: taskmanager
+    volumes:
+      - ./flink-checkpoints:/opt/flink/checkpoints
     environment:
       - |
         FLINK_PROPERTIES=
@@ -92,9 +95,9 @@ services:
     ports:
       - "2020:2020"
     volumes:
-      - ./fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf
-      - ./fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf
-      - ./uploads/logs:/logs
+      - ./fileingestionservice/fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf
+      - ./fileingestionservice/fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf
+      - uploads-data:/app/uploads
     restart: unless-stopped
 
   file-ingestion-service:
@@ -104,6 +107,7 @@ services:
     container_name: file-ingestion-service
     volumes:
       - ./fileingestionservice/target/fileingestionservice-0.0.1-SNAPSHOT.jar:/app/app.jar
+      - uploads-data:/app/uploads
     working_dir: /app
     command: java -jar app.jar
     ports:
@@ -112,4 +116,5 @@ services:
 
 volumes:
   kafka-data:
+  uploads-data:
   elasticsearch-data:

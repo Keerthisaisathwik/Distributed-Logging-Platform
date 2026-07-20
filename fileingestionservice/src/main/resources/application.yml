@@ -19,3 +19,5 @@ spring:
 kafka:
   topic:
     logs-raw: logs.raw
+file:
+  upload-dir=/app/uploads

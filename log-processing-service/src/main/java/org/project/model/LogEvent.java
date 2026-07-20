@@ -8,6 +8,7 @@ public class LogEvent {
     private String logId;
     private String host;
     private Instant timestamp;
+    private Instant ingestionTimestamp;
     private String service;
     private String instanceId;
     private String namespace;
@@ -38,6 +39,14 @@ public class LogEvent {
     }
 
     public void setTimestamp(Instant timestamp) {
+        this.timestamp = timestamp;
+    }
+
+    public Instant getIngestionTimestamp() {
+        return timestamp;
+    }
+
+    public void setIngestionTimestamp(Instant timestamp) {
         this.timestamp = timestamp;
     }
 
