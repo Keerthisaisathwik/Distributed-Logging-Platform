@@ -39,14 +39,17 @@ services:
       - elasticsearch
     ports:
       - "8081:8081"
+      - "9249:9249"
     command: jobmanager
     environment:
-      - |
-        FLINK_PROPERTIES=
+      FLINK_PROPERTIES: |
         jobmanager.rpc.address: jobmanager
+        metrics.reporters: prom
+        metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+        metrics.reporter.prom.port: 9249
     volumes:
       - ./log-processing-service/target/log-processing-service-1.0-SNAPSHOT.jar:/opt/flink/log-processing-service-1.0-SNAPSHOT.jar
-      - ./flink-checkpoints:/opt/flink/checkpoints
+      - ./log-processing-service/docker/flink-checkpoints:/opt/flink/checkpoints
     restart: unless-stopped
 
   taskmanager:
@@ -54,13 +57,17 @@ services:
     container_name: taskmanager
     depends_on:
       - jobmanager
+    ports:
+      - "9250:9250"
     command: taskmanager
     volumes:
-      - ./flink-checkpoints:/opt/flink/checkpoints
+      - ./log-processing-service/docker/flink-checkpoints:/opt/flink/checkpoints
     environment:
-      - |
-        FLINK_PROPERTIES=
+      FLINK_PROPERTIES: |
         jobmanager.rpc.address: jobmanager
+        metrics.reporters: prom
+        metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+        metrics.reporter.prom.port: 9250
     restart: unless-stopped
 
   elasticsearch:
@@ -95,8 +102,8 @@ services:
     ports:
       - "2020:2020"
     volumes:
-      - ./fileingestionservice/fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf
-      - ./fileingestionservice/fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf
+      - ./file-ingestion-service/fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf
+      - ./file-ingestion-service/fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf
       - uploads-data:/app/uploads
     restart: unless-stopped
 
@@ -106,12 +113,49 @@ services:
       - kafka
     container_name: file-ingestion-service
     volumes:
-      - ./fileingestionservice/target/fileingestionservice-0.0.1-SNAPSHOT.jar:/app/app.jar
+      - ./file-ingestion-service/target/file-ingestion-service-0.0.1-SNAPSHOT.jar:/app/app.jar
       - uploads-data:/app/uploads
     working_dir: /app
     command: java -jar app.jar
     ports:
       - "8080:8080"
+    restart: unless-stopped
+
+  kafka-init:
+    image: apache/kafka:4.3.1
+    depends_on:
+      - kafka
+    entrypoint: ["/bin/sh", "/kafka-init.sh"]
+    volumes:
+      - ./log-processing-service/docker/kafka-init.sh:/kafka-init.sh
+
+  elasticsearch-init:
+    image: curlimages/curl:8.14.1
+    depends_on:
+      - elasticsearch
+    entrypoint: ["sh", "/elasticsearch-init.sh"]
+    volumes:
+      - ./log-processing-service/docker/elasticsearch-init.sh:/elasticsearch-init.sh
+  
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./log-processing-service/docker/prometheus.yml:/etc/prometheus/prometheus.yml
+    depends_on:
+      - jobmanager
+      - taskmanager
+    restart: unless-stopped
+  
+  grafana:
+    image: grafana/grafana:12.1.1
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
     restart: unless-stopped
 
 volumes:
