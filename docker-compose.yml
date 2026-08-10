@@ -106,6 +106,15 @@ services:
       - ./file-ingestion-service/fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf
       - uploads-data:/app/uploads
     restart: unless-stopped
+  
+  redis:
+    image: redis:8-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
 
   file-ingestion-service:
     image: eclipse-temurin:17-jdk
@@ -119,6 +128,20 @@ services:
     command: java -jar app.jar
     ports:
       - "8080:8080"
+    restart: unless-stopped
+
+  agent-based-service:
+    image: eclipse-temurin:17-jdk
+    depends_on:
+      - kafka
+      - redis
+    container_name: agent-based-service
+    volumes:
+      - ./agent-based-service/target/agent-based-service-0.0.1-SNAPSHOT.jar:/app/app.jar
+    working_dir: /app
+    command: java -jar app.jar
+    ports:
+      - "8082:8082"
     restart: unless-stopped
 
   kafka-init:
@@ -162,3 +185,4 @@ volumes:
   kafka-data:
   uploads-data:
   elasticsearch-data:
+  redis-data:

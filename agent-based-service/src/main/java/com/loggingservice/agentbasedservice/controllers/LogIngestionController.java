@@ -29,6 +29,8 @@ public class LogIngestionController {
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
             @RequestBody Flux<JsonNode> logs) throws NoSuchAlgorithmException {
 
+        System.out.println("Got HIT");
+
         return logUploadService.uploadLogs(authorization, logs)
                 .thenReturn(ResponseEntity.ok("Uploaded"));
     }

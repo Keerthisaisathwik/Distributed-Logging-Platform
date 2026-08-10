@@ -3,7 +3,6 @@ package com.loggingservice.agentbasedservice.services;
 import com.loggingservice.agentbasedservice.model.ClientSession;
 import com.loggingservice.agentbasedservice.producer.KafkaProducer;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -12,10 +11,7 @@ import reactor.core.publisher.Mono;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -48,7 +44,7 @@ public class LogUploadService {
 
                     return redisService.get(token)
                             .cast(ClientSession.class)
-                            .flatMap(session -> {
+                            .flatMap((ClientSession session) -> {
 
                                 AtomicLong size = new AtomicLong();
 
