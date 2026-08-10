@@ -14,7 +14,7 @@ public class LogEvent {
     private String namespace;
     private String podName;
     private String traceId;
-    private LogLevel level;
+    private LogLevel severityLevel;
     private String message;
     private List<LogAttribute> attributes;
 
@@ -90,12 +90,12 @@ public class LogEvent {
         this.traceId = traceId;
     }
 
-    public LogLevel getLevel() {
-        return level;
+    public LogLevel getSeverityLevel() {
+        return severityLevel;
     }
 
-    public void setLevel(LogLevel level) {
-        this.level = level;
+    public void setSeverityLevel(LogLevel level) {
+        this.severityLevel = level;
     }
 
     public String getMessage() {
