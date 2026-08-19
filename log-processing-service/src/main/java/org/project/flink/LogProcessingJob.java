@@ -11,6 +11,7 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.CheckpointConfig;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.http.HttpHost;
+import org.project.config.AppConfig;
 import org.project.elasticsearchSink.NetworkConfig;
 import org.project.model.LogEvent;
 import org.project.service.EnrichLogs;
@@ -19,7 +20,9 @@ import org.project.service.ValidationAndDeduplicatingLogs;
 import org.project.service.impl.EnrichLogsImpl;
 import org.project.service.impl.ParseAndNormalizeLogsImpl;
 import org.project.service.impl.ValidationAndDeduplicatingLogsImpl;
+import org.project.sink.CassandraSink;
 import org.project.sink.ElasticSearchSink;
+import org.project.sink.S3Sink;
 
 import java.util.Collections;
 import java.util.List;
@@ -42,9 +45,9 @@ public class LogProcessingJob {
     }
 
     public void start() throws Exception {
-        String rawLogsTopicName  = "logs.raw";
-        String processedLogsTopicName  = "logs.processed";
-        String failedLogsTopicName  = "logs.error";
+        String rawLogsTopicName  = AppConfig.load().getInputTopicName();
+        String processedLogsTopicName  = AppConfig.load().getProcessedTopicName();
+        String failedLogsTopicName  = AppConfig.load().getFailedTopicName();
 
         String server = "kafka:9092";
 
@@ -104,9 +107,29 @@ public class LogProcessingJob {
                         null
                 );
 
-        ElasticSearchSink sink = new ElasticSearchSink(networkConfig);
+        ElasticSearchSink elasticSink = new ElasticSearchSink(networkConfig);
+        logStream.sinkTo(elasticSink);
 
-        logStream.sinkTo(sink);
+        CassandraSink cassandraSink = new CassandraSink(
+                AppConfig.load().getCassandraContactPoints(),
+                AppConfig.load().getCassandraPort(),
+                AppConfig.load().getCassandraLocalDatacenter(),
+                AppConfig.load().getCassandraKeyspace(),
+                AppConfig.load().getCassandraMaxBatchLogEvents(),
+                AppConfig.load().getCassandraMaxBatchSizeBytes(),
+                AppConfig.load().getCassandraFlushIntervalMs(),
+                AppConfig.load().getCassandraMaxConcurrentRequests(),
+                AppConfig.load().getCassandraMaxRetries()
+        );
+        logStream.addSink(cassandraSink);
+
+        S3Sink s3sink = new S3Sink(
+                AppConfig.load().getBucket(),
+                AppConfig.load().getEndpoint(),
+                AppConfig.load().getAccessKey(),
+                AppConfig.load().getSecretKey()
+        );
+        logStream.addSink(s3sink);
 
         environment.execute("Distributed Logging Platform");
     }

@@ -66,6 +66,41 @@
             <version>2.3.0</version>
             <scope>compile</scope>
         </dependency>
+
+        <!-- For cassandra java-driver-core is enough-->
+        <!-- Source: https://mvnrepository.com/artifact/org.apache.cassandra/java-driver-core -->
+        <dependency>
+            <groupId>org.apache.cassandra</groupId>
+            <artifactId>java-driver-core</artifactId>
+            <version>4.19.3</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <!-- For S3 we need these 3 dependencies-->
+        <!-- Source: https://mvnrepository.com/artifact/software.amazon.awssdk/s3 -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+            <version>2.51.4</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <!-- Source: https://mvnrepository.com/artifact/com.fasterxml.jackson.core/jackson-databind -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.22.1</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <!-- The Jackson JSR-310 module is important because LogEvent contains timestamp-->
+        <!-- Source: https://mvnrepository.com/artifact/com.fasterxml.jackson.datatype/jackson-datatype-jsr310 -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+            <version>2.22.1</version>
+            <scope>compile</scope>
+        </dependency>
     </dependencies>
 
     <build>

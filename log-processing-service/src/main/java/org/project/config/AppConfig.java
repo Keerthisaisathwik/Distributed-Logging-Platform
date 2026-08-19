@@ -7,7 +7,6 @@ import java.util.Properties;
 public class AppConfig {
 
     private final String kafkaBootstrapServers;
-    private final String kafkaTopic;
 
     private final String awsRegion;
     private final String s3Bucket;
@@ -15,17 +14,55 @@ public class AppConfig {
     private final String elasticsearchHost;
     private final int elasticsearchPort;
 
+    private final String inputTopicName;
+    private final String processedTopicName;
+    private final String failedTopicName;
+
+    private final String cassandraContactPoints;
+    private final int cassandraPort;
+    private final String cassandraLocalDatacenter;
+    private final String cassandraKeyspace;
+
+    private final int cassandraMaxBatchLogEvents;
+    private final long cassandraMaxBatchSizeBytes;
+    private final long cassandraFlushIntervalMs;
+    private final int cassandraMaxConcurrentRequests;
+    private final int cassandraMaxRetries;
+
+    private final String bucket;
+    private final String endpoint;
+    private final String accessKey;
+    private final String secretKey;
+
     private final int parallelism;
 
     private AppConfig(Properties properties) {
         this.kafkaBootstrapServers = properties.getProperty("kafka.bootstrap.servers");
-        this.kafkaTopic = properties.getProperty("kafka.topic");
+        this.inputTopicName = properties.getProperty("input.topic.name");
+        this.processedTopicName = properties.getProperty("processed.topic.name");
+        this.failedTopicName = properties.getProperty("failed.topic.name");
 
         this.awsRegion = properties.getProperty("aws.region");
         this.s3Bucket = properties.getProperty("s3.bucket");
 
         this.elasticsearchHost = properties.getProperty("elasticsearch.host");
         this.elasticsearchPort = Integer.parseInt(properties.getProperty("elasticsearch.port"));
+
+        this.cassandraContactPoints = properties.getProperty("cassandra.contact-points");
+        this.cassandraPort = Integer.parseInt(properties.getProperty("cassandra.port"));
+        this.cassandraLocalDatacenter = properties.getProperty("cassandra.local-datacenter");
+        this.cassandraKeyspace = properties.getProperty("cassandra.keyspace");
+
+        this.cassandraMaxBatchLogEvents = Integer.parseInt(properties.getProperty("cassandra.max-batch-log-events"));
+        this.cassandraMaxBatchSizeBytes = Long.parseLong(properties.getProperty("cassandra.max-batch-size-bytes"));
+        this.cassandraFlushIntervalMs = Long.parseLong(properties.getProperty("cassandra.flush-interval-ms"));
+        this.cassandraMaxConcurrentRequests = Integer.parseInt(properties.getProperty("cassandra.max-concurrent-requests"));
+        this.cassandraMaxRetries = Integer.parseInt(properties.getProperty("cassandra.max-retries"));
+
+        this.bucket = properties.getProperty("s3.bucket");
+        this.endpoint = properties.getProperty("s3.endpoint");
+        this.accessKey = properties.getProperty("s3.access-key");
+        this.secretKey = properties.getProperty("s3.secret-key");
 
         this.parallelism = Integer.parseInt(properties.getProperty("parallelism"));
     }
@@ -52,8 +89,16 @@ public class AppConfig {
         return kafkaBootstrapServers;
     }
 
-    public String getKafkaTopic() {
-        return kafkaTopic;
+    public String getInputTopicName() {
+        return inputTopicName;
+    }
+
+    public String getProcessedTopicName() {
+        return processedTopicName;
+    }
+
+    public String getFailedTopicName() {
+        return failedTopicName;
     }
 
     public String getAwsRegion() {
@@ -70,6 +115,58 @@ public class AppConfig {
 
     public int getElasticsearchPort() {
         return elasticsearchPort;
+    }
+
+    public String getCassandraContactPoints() {
+        return cassandraContactPoints;
+    }
+
+    public int getCassandraPort() {
+        return cassandraPort;
+    }
+
+    public String getCassandraLocalDatacenter() {
+        return cassandraLocalDatacenter;
+    }
+
+    public String getCassandraKeyspace() {
+        return cassandraKeyspace;
+    }
+
+    public int getCassandraMaxBatchLogEvents() {
+        return cassandraMaxBatchLogEvents;
+    }
+
+    public long getCassandraMaxBatchSizeBytes() {
+        return cassandraMaxBatchSizeBytes;
+    }
+
+    public long getCassandraFlushIntervalMs() {
+        return cassandraFlushIntervalMs;
+    }
+
+    public int getCassandraMaxConcurrentRequests() {
+        return cassandraMaxConcurrentRequests;
+    }
+
+    public int getCassandraMaxRetries() {
+        return cassandraMaxRetries;
+    }
+
+    public String getBucket() {
+        return bucket;
+    }
+
+    public String getEndpoint() {
+        return endpoint;
+    }
+
+    public String getAccessKey() {
+        return accessKey;
+    }
+
+    public String getSecretKey() {
+        return secretKey;
     }
 
     public int getParallelism() {

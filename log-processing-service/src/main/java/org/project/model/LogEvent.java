@@ -1,12 +1,15 @@
 package org.project.model;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 
 public class LogEvent {
 
     private String logId;
     private String host;
+    private Environment env;
     private Instant timestamp;
     private Instant ingestionTimestamp;
     private String service;
@@ -33,6 +36,10 @@ public class LogEvent {
     public void setHost(String host) {
         this.host = host;
     }
+
+    public Environment getEnv() { return env; }
+
+    public void setEnv(Environment env) { this.env = env; }
 
     public Instant getTimestamp() {
         return timestamp;
@@ -112,6 +119,11 @@ public class LogEvent {
 
     public void setAttributes(List<LogAttribute> attributes) {
         this.attributes = attributes;
+    }
+
+    //For getting only date
+    public LocalDate getLogDate() {
+        return this.timestamp.atZone(ZoneOffset.UTC).toLocalDate();
     }
 
 }
