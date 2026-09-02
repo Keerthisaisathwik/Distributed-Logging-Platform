@@ -1,15 +1,19 @@
 #!/bin/sh
 set -ex
 
-echo "Waiting for Kafka..."
+echo "Waiting for Kafka cluster..."
 
-until /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list >/dev/null 2>&1
+until /opt/kafka/bin/kafka-topics.sh \
+    --bootstrap-server kafka:9092 \
+    --list >/dev/null 2>&1
 do
-    echo "Kafka not ready..."
+    echo "Kafka cluster not ready..."
     sleep 2
 done
 
-echo "Creating topic..."
+echo "Kafka cluster ready."
+
+echo "Creating logs.raw topic..."
 
 /opt/kafka/bin/kafka-topics.sh \
     --bootstrap-server kafka:9092 \
@@ -17,6 +21,6 @@ echo "Creating topic..."
     --if-not-exists \
     --topic logs.raw \
     --partitions 4 \
-    --replication-factor 1
+    --replication-factor 3
 
-echo "Done."
+echo "Kafka initialization complete."

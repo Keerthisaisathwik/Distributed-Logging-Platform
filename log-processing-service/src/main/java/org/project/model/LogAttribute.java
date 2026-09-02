@@ -2,21 +2,11 @@ package org.project.model;
 
 public class LogAttribute {
 
-    private Long id;
-
     private String logId;              // FK back to log_events.logId
 
     private String key;
 
     private String value;
-
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
 
     public String getLogId() {
         return logId;

@@ -17,9 +17,6 @@ import org.project.model.LogEvent;
 import org.project.service.EnrichLogs;
 import org.project.service.ParseAndNormalizeLogs;
 import org.project.service.ValidationAndDeduplicatingLogs;
-import org.project.service.impl.EnrichLogsImpl;
-import org.project.service.impl.ParseAndNormalizeLogsImpl;
-import org.project.service.impl.ValidationAndDeduplicatingLogsImpl;
 import org.project.sink.CassandraSink;
 import org.project.sink.ElasticSearchSink;
 import org.project.sink.S3Sink;
@@ -45,57 +42,61 @@ public class LogProcessingJob {
     }
 
     public void start() throws Exception {
-        String rawLogsTopicName  = AppConfig.load().getInputTopicName();
-        String processedLogsTopicName  = AppConfig.load().getProcessedTopicName();
-        String failedLogsTopicName  = AppConfig.load().getFailedTopicName();
+        String rawLogsTopicName = AppConfig.load().getKafkaRawTopic();
 
-        String server = "kafka:9092";
+        // Multi-broker string from application.properties: "kafka-1:9092,kafka-2:9092,kafka-3:9092"
+        String bootstrapServers = AppConfig.load().getKafkaBootstrapServers();
 
         try {
-            streamConsumer(rawLogsTopicName, server);
+            streamConsumer(rawLogsTopicName, bootstrapServers);
         } catch (Exception e) {
-            System.out.println(e.toString());
+            System.err.println("Error running LogProcessingJob: " + e.getMessage());
+            throw e;
         }
     }
 
-    public void streamConsumer(String rawLogsTopicName, String server) throws Exception {
+    public void streamConsumer(String rawLogsTopicName, String bootstrapServers) throws Exception {
         StreamExecutionEnvironment environment = StreamExecutionEnvironment.getExecutionEnvironment();
-        environment.enableCheckpointing(10_000);
-        CheckpointConfig checkpointConfig = environment.getCheckpointConfig();
 
-        checkpointConfig.setCheckpointTimeout(60_000);
-        checkpointConfig.setMinPauseBetweenCheckpoints(5_000);
+        // Flink Checkpoint externalized parameters
+        long checkpointInterval = AppConfig.load().getCheckpointIntervalMs();
+        environment.enableCheckpointing(checkpointInterval);
+
+        CheckpointConfig checkpointConfig = environment.getCheckpointConfig();
+        checkpointConfig.setCheckpointTimeout(AppConfig.load().getCheckpointTimeoutMs());
+        checkpointConfig.setMinPauseBetweenCheckpoints(AppConfig.load().getMinPauseBetweenCheckpointsMs());
         checkpointConfig.setMaxConcurrentCheckpoints(1);
 
         environment.configure(
                 new Configuration()
                         .set(CheckpointingOptions.CHECKPOINTS_DIRECTORY,
-                                "file:///opt/flink/checkpoints")
+                                AppConfig.load().getCheckpointDir())
         );
-        KafkaSource<String> kafkaSource = createStringConsumerForTopic(rawLogsTopicName, server);
+
+        String groupId = AppConfig.load().getKafkaGroupId();
+        KafkaSource<String> kafkaSource = createStringConsumerForTopic(rawLogsTopicName, bootstrapServers, groupId);
+
         DataStream<String> stringInputStream = environment.fromSource(
                 kafkaSource,
                 WatermarkStrategy.noWatermarks(),
                 "Kafka Source"
         );
 
-        //process Logs
-        LogProcessingJob job = new LogProcessingJob(
-                new ParseAndNormalizeLogsImpl(),
-                new ValidationAndDeduplicatingLogsImpl(),
-                new EnrichLogsImpl()
-        );
+        // Process Logs using injected instance services (fixed duplicate instantiation)
+        DataStream<LogEvent> logEventDataStream = this.parseService.process(stringInputStream);
+        DataStream<LogEvent> parseLogEventDataStream = this.validationService.process(logEventDataStream);
+        DataStream<LogEvent> logStream = this.enrichService.process(parseLogEventDataStream);
 
-        DataStream<LogEvent> logEventDataStream = job.parseService.process(stringInputStream);
-        DataStream<LogEvent> parseLogEventDataStream = job.validationService.process(logEventDataStream);
-        DataStream<LogEvent> logStream = job.enrichService.process(parseLogEventDataStream);
-
-        //Testing Print Logs
+        // Print Stream for debugging
         logStream.print();
+
+        // Elasticsearch Sink Configuration
+        String esHost = AppConfig.load().getElasticsearchHost();
+        int esPort = AppConfig.load().getElasticsearchPort();
 
         NetworkConfig networkConfig =
                 new NetworkConfig(
-                        List.of(new HttpHost("elasticsearch", 9200)),
+                        List.of(new HttpHost(esHost, esPort)),
                         null,
                         null,
                         Collections.emptyList(),
@@ -110,6 +111,7 @@ public class LogProcessingJob {
         ElasticSearchSink elasticSink = new ElasticSearchSink(networkConfig);
         logStream.sinkTo(elasticSink);
 
+        // Cassandra Sink Configuration
         CassandraSink cassandraSink = new CassandraSink(
                 AppConfig.load().getCassandraContactPoints(),
                 AppConfig.load().getCassandraPort(),
@@ -123,6 +125,7 @@ public class LogProcessingJob {
         );
         logStream.addSink(cassandraSink);
 
+        // S3 Sink Configuration
         S3Sink s3sink = new S3Sink(
                 AppConfig.load().getBucket(),
                 AppConfig.load().getEndpoint(),
@@ -134,11 +137,11 @@ public class LogProcessingJob {
         environment.execute("Distributed Logging Platform");
     }
 
-    public KafkaSource<String> createStringConsumerForTopic(String topic, String kafkaAddress) {
+    public KafkaSource<String> createStringConsumerForTopic(String topic, String bootstrapServers, String groupId) {
         return KafkaSource.<String>builder()
-                .setBootstrapServers(kafkaAddress)
+                .setBootstrapServers(bootstrapServers)
                 .setTopics(topic)
-                .setGroupId("log-processing-group") // required — no longer optional/commented out
+                .setGroupId(groupId)
                 .setStartingOffsets(OffsetsInitializer.earliest())
                 .setValueOnlyDeserializer(new SimpleStringSchema())
                 .build();

@@ -307,7 +307,7 @@ public class JsonToLogEventProcessFunction extends ProcessFunction<String, LogEv
         }
     }
 
-    private List<LogAttribute> parseAttributes(JsonNode json, String logId) {
+    private List<LogAttribute> parseAttributes(JsonNode json) {
         JsonNode attributesNode = json.get("attributes");
 
         if (attributesNode == null || attributesNode.isNull()) {
@@ -326,8 +326,6 @@ public class JsonToLogEventProcessFunction extends ProcessFunction<String, LogEv
         while (fields.hasNext()) {
             Map.Entry<String, JsonNode> field = fields.next();
             LogAttribute logAttribute = new LogAttribute();
-            logAttribute.setLogId(logId);
-            logAttribute.setId(podName + "" + Instant.now() + "" + UUID.randomUUID().toString().substring(0,10));
             String key = field.getKey();
             JsonNode value = field.getValue();
 
@@ -352,9 +350,7 @@ public class JsonToLogEventProcessFunction extends ProcessFunction<String, LogEv
         }
 
         if (logEvent.getMessage() == null || logEvent.getMessage().isBlank()) {
-            throw new IllegalArgumentException(
-                    "Log message is missing"
-            );
+            throw new IllegalArgumentException("Log message is missing");
         }
     }
 }

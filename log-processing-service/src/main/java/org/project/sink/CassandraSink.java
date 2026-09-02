@@ -8,6 +8,7 @@ import com.datastax.oss.driver.api.core.auth.AuthenticationException;
 import com.datastax.oss.driver.api.core.connection.FrameTooLongException;
 import com.datastax.oss.driver.api.core.cql.AsyncResultSet;
 import com.datastax.oss.driver.api.core.cql.BoundStatement;
+import com.datastax.oss.driver.api.core.cql.BoundStatementBuilder;
 import com.datastax.oss.driver.api.core.cql.PreparedStatement;
 import com.datastax.oss.driver.api.core.servererrors.ProtocolError;
 import com.datastax.oss.driver.api.core.servererrors.QueryValidationException;
@@ -21,8 +22,8 @@ import org.apache.flink.runtime.state.FunctionSnapshotContext;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.apache.flink.streaming.api.functions.sink.legacy.RichSinkFunction;
 import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
-import org.project.config.AppConfig;
 import org.project.model.Environment;
+import org.project.model.LogAttribute;
 import org.project.model.LogEvent;
 import org.project.model.LogLevel;
 import org.slf4j.Logger;
@@ -32,7 +33,10 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executors;
@@ -68,6 +72,7 @@ public class CassandraSink extends RichSinkFunction<LogEvent> implements Checkpo
     private transient PreparedStatement serviceStatement;
     private transient PreparedStatement traceStatement;
     private transient PreparedStatement levelStatement;
+    private transient PreparedStatement idStatement;
 
     // Buffers & Async State
     private transient List<LogEvent> eventBuffer;
@@ -78,12 +83,6 @@ public class CassandraSink extends RichSinkFunction<LogEvent> implements Checkpo
 
     // Error Propagation & Timers
     private transient AtomicReference<Throwable> asyncError;
-    // Count of logical write operations currently in flight. Each one holds a
-    // single acquired semaphore permit for its entire lifetime -- the initial
-    // attempt PLUS any retries -- so this tracks in-flight logical operations,
-    // not live Cassandra network requests (a retry reuses the same permit and
-    // count entry rather than acquiring a new one). That's intentional: it
-    // keeps the concurrency limit honored across backoff/retry too.
     private transient AtomicInteger inFlightOperationsCount;
     private transient long lastFlushTime;
 
@@ -91,6 +90,8 @@ public class CassandraSink extends RichSinkFunction<LogEvent> implements Checkpo
     private transient Counter successCounter;
     private transient Counter failureCounter;
     private transient Counter retryCounter;
+    private transient Counter malformedLogIdCounter;
+    private transient Counter droppedAttributesCounter;
 
     public CassandraSink(
             String contactPointsStr,
@@ -154,10 +155,15 @@ public class CassandraSink extends RichSinkFunction<LogEvent> implements Checkpo
             VALUES (?, ?, ?, ?, ?)
         """);
 
+        idStatement = session.prepare("""
+            INSERT INTO logs_by_id
+            (host, log_id, env, timestamp, service_name, instance_id, namespace, pod_name, trace_id, log_level, message, attributes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """);
+
         eventBuffer = new ArrayList<>(maxBatchLogEvents);
         currentBufferBytes = 0;
-        // An AsyncResultSet is Cassandra's result object.
-        // CompletableFuture is like storing future state thing.
+
         pendingFutures = new ArrayList<>();
         concurrencySemaphore = new Semaphore(maxConcurrentRequests);
         retryExecutor = Executors.newScheduledThreadPool(Math.min(maxConcurrentRequests, 4));
@@ -171,6 +177,8 @@ public class CassandraSink extends RichSinkFunction<LogEvent> implements Checkpo
         successCounter = runtimeContext.getMetricGroup().counter("cassandra_writes_success");
         failureCounter = runtimeContext.getMetricGroup().counter("cassandra_writes_failed");
         retryCounter = runtimeContext.getMetricGroup().counter("cassandra_write_retries");
+        malformedLogIdCounter = runtimeContext.getMetricGroup().counter("cassandra_malformed_log_id");
+        droppedAttributesCounter = runtimeContext.getMetricGroup().counter("cassandra_dropped_attributes");
         runtimeContext.getMetricGroup().gauge("cassandra_pending_requests", (Gauge<Integer>) inFlightOperationsCount::get);
 
         // Here we are using Flink Processing-Time Callback instead of java scheduler.
@@ -235,8 +243,7 @@ public class CassandraSink extends RichSinkFunction<LogEvent> implements Checkpo
             return;
         }
 
-        // Generate bound statements per LogEvent
-        List<BoundStatement> statementsToExecute = new ArrayList<>(eventBuffer.size() * 3);
+        List<BoundStatement> statementsToExecute = new ArrayList<>(eventBuffer.size() * 4);
         for (LogEvent log : eventBuffer) {
             statementsToExecute.add(serviceStatement.bind(
                     log.getService(), log.getLogDate(), log.getTimestamp(), log.getLogId(),
@@ -255,6 +262,11 @@ public class CassandraSink extends RichSinkFunction<LogEvent> implements Checkpo
                     log.getSeverityLevel(), log.getTimestamp(), log.getLogId(),
                     log.getService(), log.getMessage()
             ));
+
+            BoundStatement idStmt = buildIdStatement(log);
+            if (idStmt != null) {
+                statementsToExecute.add(idStmt);
+            }
         }
 
         for (BoundStatement stmt : statementsToExecute) {
@@ -272,6 +284,73 @@ public class CassandraSink extends RichSinkFunction<LogEvent> implements Checkpo
 
         // Safe cleanup: keep incomplete futures, verify no errors in completed ones
         cleanupCompletedFutures();
+    }
+
+    /**
+     * Builds the bound statement for logs_by_id, or null if this event can't
+     * be written to that table. logs_by_id.log_id is a uuid, but
+     * LogEvent.getLogId() is a plain String -- if it doesn't parse as a UUID,
+     * we drop just this table's row for the event (logging + counting it)
+     * rather than throwing and failing the whole flush batch, since the
+     * other three tables above have already been queued successfully.
+     */
+    private BoundStatement buildIdStatement(LogEvent log) {
+        UUID logId;
+        try {
+            logId = UUID.fromString(log.getLogId());
+        } catch (IllegalArgumentException | NullPointerException e) {
+            LOG.error("Skipping logs_by_id write: logId '{}' is not a valid UUID (service={}, timestamp={})",
+                    log.getLogId(), log.getService(), log.getTimestamp());
+            malformedLogIdCounter.inc();
+            return null;
+        }
+
+        BoundStatementBuilder builder = idStatement.boundStatementBuilder()
+                .setString("host", log.getHost())
+                .setUuid("log_id", logId)
+                .setString("env", log.getEnv() != null ? log.getEnv().toString() : null)
+                .setInstant("timestamp", log.getTimestamp())
+                .setString("service_name", log.getService())
+                .setString("instance_id", log.getInstanceId())
+                .setString("namespace", log.getNamespace())
+                .setString("pod_name", log.getPodName())
+                .setString("trace_id", log.getTraceId())
+                .setString("log_level", log.getSeverityLevel() != null ? log.getSeverityLevel().toString() : null)
+                .setString("message", log.getMessage());
+
+        Map<String, String> attributesMap = toAttributeMap(log.getAttributes());
+        if (attributesMap != null && !attributesMap.isEmpty()) {
+            builder = builder.setMap("attributes", attributesMap, String.class, String.class);
+        }
+        // else: leave the column unset rather than binding null/empty. CQL
+        // treats an explicit null bind on INSERT as a real tombstone write,
+        // and most log events won't carry attributes -- unset avoids
+        // generating a tombstone for that cell on every such row.
+
+        return builder.build();
+    }
+
+    /**
+     * Converts the event's attribute list into the Map<String,String> the
+     * attributes column expects. CQL maps reject null keys/values outright,
+     * so entries missing either are dropped (and counted) rather than
+     * failing the whole write. Duplicate keys keep the last occurrence,
+     * matching normal Map.put semantics.
+     */
+    private Map<String, String> toAttributeMap(List<LogAttribute> attributes) {
+        if (attributes == null || attributes.isEmpty()) {
+            return null;
+        }
+        Map<String, String> map = new HashMap<>(attributes.size() * 2);
+        for (LogAttribute attr : attributes) {
+            if (attr == null || attr.getKey() == null || attr.getValue() == null) {
+                droppedAttributesCounter.inc();
+                LOG.debug("Dropping log attribute with null key/value: {}", attr);
+                continue;
+            }
+            map.put(attr.getKey(), attr.getValue());
+        }
+        return map;
     }
 
     private CompletableFuture<AsyncResultSet> executeWithRetry(BoundStatement stmt, int attempt) {
@@ -417,8 +496,8 @@ public class CassandraSink extends RichSinkFunction<LogEvent> implements Checkpo
      * roughly costing us -- used ONLY to decide when eventBuffer has grown
      * large enough to trigger an early flush (maxBatchSizeBytes). This is
      * NOT a precise measurement of on-wire CQL size or true JVM heap usage:
-     * it ignores object headers, the ~3 BoundStatements we later build per
-     * event, and any LogEvent fields not listed below. (I don't have the
+     * it ignores object headers, the up-to-4 BoundStatements we later build
+     * per event, and any LogEvent fields not listed below. (I don't have the
      * LogEvent source, so double-check this field list -- and that they're
      * really Strings -- against your actual class.) Treat maxBatchSizeBytes
      * as a guardrail against runaway buffering, not a byte-accurate budget.
@@ -435,7 +514,18 @@ public class CassandraSink extends RichSinkFunction<LogEvent> implements Checkpo
         chars += strLen(log.getNamespace());
         chars += strLen(log.getPodName());
         chars += strLen(log.getTraceId());
+        chars += strLen(log.getInstanceId());
         chars += strLen(log.getSeverityLevel() != null ? log.getSeverityLevel().toString() : LogLevel.INFO.toString());
+
+        if (log.getAttributes() != null) {
+            for (LogAttribute attr : log.getAttributes()) {
+                if (attr != null) {
+                    chars += strLen(attr.getKey());
+                    chars += strLen(attr.getValue());
+                }
+            }
+        }
+
         return FIXED_OVERHEAD_BYTES_PER_EVENT + chars * BYTES_PER_CHAR_ESTIMATE;
     }
 

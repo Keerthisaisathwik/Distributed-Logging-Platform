@@ -6,12 +6,26 @@ echo "Waiting for Elasticsearch..."
 
 until curl -s http://elasticsearch:9200 >/dev/null
 do
+    echo "Elasticsearch not ready..."
     sleep 2
 done
 
-if curl -s -o /dev/null -w "%{http_code}" http://elasticsearch:9200/logs | grep -q "200"; then
+echo "Elasticsearch is responding."
+
+until curl -s http://elasticsearch:9200/_cluster/health \
+    | grep -q '"status"'
+do
+    echo "Waiting for Elasticsearch..."
+    sleep 2
+done
+
+if curl -s -o /dev/null -w "%{http_code}" \
+    http://elasticsearch:9200/logs | grep -q "200"; then
+
     echo "Index logs already exists."
+
 else
+
     echo "Creating logs index..."
 
     curl -X PUT "http://elasticsearch:9200/logs" \

@@ -7,16 +7,21 @@ import java.util.Properties;
 public class AppConfig {
 
     private final String kafkaBootstrapServers;
+    private final String kafkaGroupId;
+    private final String kafkaRawTopic;
+    private final String kafkaProcessedTopic;
+    private final String kafkaFailedTopic;
+
+    private final long checkpointIntervalMs;
+    private final long checkpointTimeoutMs;
+    private final long minPauseBetweenCheckpointsMs;
+    private final String checkpointDir;
 
     private final String awsRegion;
     private final String s3Bucket;
 
     private final String elasticsearchHost;
     private final int elasticsearchPort;
-
-    private final String inputTopicName;
-    private final String processedTopicName;
-    private final String failedTopicName;
 
     private final String cassandraContactPoints;
     private final int cassandraPort;
@@ -38,9 +43,15 @@ public class AppConfig {
 
     private AppConfig(Properties properties) {
         this.kafkaBootstrapServers = properties.getProperty("kafka.bootstrap.servers");
-        this.inputTopicName = properties.getProperty("input.topic.name");
-        this.processedTopicName = properties.getProperty("processed.topic.name");
-        this.failedTopicName = properties.getProperty("failed.topic.name");
+        this.kafkaGroupId = properties.getProperty("kafka.group.id");
+        this.kafkaRawTopic = properties.getProperty("kafka.raw.topic");
+        this.kafkaProcessedTopic = properties.getProperty("kafka.processed.topic");
+        this.kafkaFailedTopic = properties.getProperty("kafka.failed.topic");
+
+        this.checkpointIntervalMs = Long.parseLong(properties.getProperty("flink.checkpoint.interval.ms"));
+        this.checkpointTimeoutMs = Long.parseLong(properties.getProperty("flink.checkpoint.timeout.ms"));
+        this.minPauseBetweenCheckpointsMs = Long.parseLong(properties.getProperty("flink.checkpoint.min.pause.ms"));
+        this.checkpointDir = properties.getProperty("flink.checkpoint.directory");
 
         this.awsRegion = properties.getProperty("aws.region");
         this.s3Bucket = properties.getProperty("s3.bucket");
@@ -89,16 +100,36 @@ public class AppConfig {
         return kafkaBootstrapServers;
     }
 
-    public String getInputTopicName() {
-        return inputTopicName;
+    public String getKafkaGroupId() {
+        return kafkaGroupId;
     }
 
-    public String getProcessedTopicName() {
-        return processedTopicName;
+    public String getKafkaRawTopic() {
+        return kafkaRawTopic;
     }
 
-    public String getFailedTopicName() {
-        return failedTopicName;
+    public String getKafkaProcessedTopic() {
+        return kafkaProcessedTopic;
+    }
+
+    public String getKafkaFailedTopic() {
+        return kafkaFailedTopic;
+    }
+
+    public Long getCheckpointIntervalMs() {
+        return checkpointIntervalMs;
+    }
+
+    public Long getCheckpointTimeoutMs() {
+        return checkpointTimeoutMs;
+    }
+
+    public Long getMinPauseBetweenCheckpointsMs() {
+        return minPauseBetweenCheckpointsMs;
+    }
+
+    public String getCheckpointDir() {
+        return checkpointDir;
     }
 
     public String getAwsRegion() {
