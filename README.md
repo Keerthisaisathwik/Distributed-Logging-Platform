@@ -363,7 +363,6 @@ Rather than building a CRUD application, I wanted to understand how production l
 
 # Real-world AWS mapping for your project
 
-|-------------------------------------------|
 | Local Project | AWS Equivalent            |
 | ------------- | ------------------------- |
 | MinIO         | S3                        |
