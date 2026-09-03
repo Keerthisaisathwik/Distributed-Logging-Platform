@@ -361,7 +361,7 @@ Rather than building a CRUD application, I wanted to understand how production l
 
 ---
 
-# Real-world AWS mapping for your project
+# Real-world AWS mapping for this project
 
 | Local Project | AWS Equivalent            |
 | ------------- | ------------------------- |
