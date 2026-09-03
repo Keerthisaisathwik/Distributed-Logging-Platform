@@ -22,17 +22,20 @@ services:
       KAFKA_LOG_DIRS: /var/lib/kafka/data
     volumes:
       - kafka-data:/var/lib/kafka/data
-
     restart: unless-stopped
   
   jobmanager:
     image: flink:2.3
     container_name: jobmanager
     depends_on:
-      - kafka
-      - elasticsearch
-      - cassandra
-      - minio
+      kafka:
+        condition: service_started
+      elasticsearch:
+        condition: service_started
+      cassandra-init:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
     ports:
       - "8081:8081"
       - "9249:9249"
@@ -105,6 +108,7 @@ services:
     command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data
+    restart: unless-stopped
 
   fluent-bit:
     image: fluent/fluent-bit:3.2
@@ -210,6 +214,25 @@ services:
     volumes:
       - cassandra-data:/var/lib/cassandra
     restart: unless-stopped
+
+  cassandra-init:
+    image: cassandra:5.0
+    container_name: cassandra-init
+    depends_on:
+      - cassandra
+    entrypoint: ["/bin/sh", "/cassandra-init.sh"]
+    volumes:
+      - ./log-processing-service/docker/init-schema.cql:/init-schema.cql:ro
+      - ./log-processing-service/docker/cassandra-init.sh:/cassandra-init.sh:ro
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: minio-init
+    depends_on:
+      - minio
+    entrypoint: ["/bin/sh", "/init-bucket.sh"]
+    volumes:
+      - ./log-processing-service/docker/init-bucket.sh:/init-bucket.sh:ro
 
 volumes:
   kafka-data:

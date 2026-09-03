@@ -145,14 +145,14 @@ public class CassandraSink extends RichSinkFunction<LogEvent> implements Checkpo
 
         traceStatement = session.prepare("""
             INSERT INTO logs_by_traceid
-            (trace_id, timestamp, log_id, service_name, log_level, message)
-            VALUES (?, ?, ?, ?, ?, ?)
+            (trace_id, timestamp, log_id, host, service_name, log_level, message)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """);
 
         levelStatement = session.prepare("""
             INSERT INTO logs_by_level
-            (log_level, timestamp, log_id, service_name, message)
-            VALUES (?, ?, ?, ?, ?)
+            (log_level, log_date, timestamp, log_id, host, service_name, message)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """);
 
         idStatement = session.prepare("""
@@ -245,22 +245,27 @@ public class CassandraSink extends RichSinkFunction<LogEvent> implements Checkpo
 
         List<BoundStatement> statementsToExecute = new ArrayList<>(eventBuffer.size() * 4);
         for (LogEvent log : eventBuffer) {
+            //In the future, I'll need to change the logId with snowflake here I am making string to UUID conversion.
+            UUID logId = UUID.fromString(log.getLogId());
+            System.out.println("_________________________");
+            System.out.println(log);
+            System.out.println("_________________________");
             statementsToExecute.add(serviceStatement.bind(
-                    log.getService(), log.getLogDate(), log.getTimestamp(), log.getLogId(),
-                    log.getSeverityLevel(), log.getHost(), log.getEnv(), log.getMessage(),
-                    log.getNamespace(), log.getPodName(), log.getTraceId()
+                    log.getService(), log.getLogDate(), log.getTimestamp(), logId,
+                    log.getSeverityLevel().toString(), log.getHost(), log.getEnv().toString(),
+                    log.getMessage(), log.getNamespace(), log.getPodName(), log.getTraceId()
             ));
 
             if (log.getTraceId() != null) {
                 statementsToExecute.add(traceStatement.bind(
-                        log.getTraceId(), log.getTimestamp(), log.getLogId(),
-                        log.getService(), log.getSeverityLevel(), log.getMessage()
+                        log.getTraceId(), log.getTimestamp(), logId, log.getHost(),
+                        log.getService(), log.getSeverityLevel().toString(), log.getMessage()
                 ));
             }
 
             statementsToExecute.add(levelStatement.bind(
-                    log.getSeverityLevel(), log.getTimestamp(), log.getLogId(),
-                    log.getService(), log.getMessage()
+                    log.getSeverityLevel().toString(), log.getLogDate(), log.getTimestamp() ,logId,
+                    log.getHost(), log.getService(), log.getMessage()
             ));
 
             BoundStatement idStmt = buildIdStatement(log);

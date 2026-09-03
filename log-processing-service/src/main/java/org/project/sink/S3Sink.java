@@ -1,6 +1,7 @@
 package org.project.sink;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 import org.apache.flink.api.common.functions.OpenContext;
@@ -98,7 +99,9 @@ public class S3Sink extends RichSinkFunction<LogEvent> implements CheckpointedFu
 
     @Override
     public void open(OpenContext openContext) throws Exception {
-        objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
+        objectMapper = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         s3Client = buildS3Client();
 
         subtaskIndex = getRuntimeContext().getTaskInfo().getIndexOfThisSubtask();

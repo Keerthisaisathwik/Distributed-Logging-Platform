@@ -50,12 +50,10 @@ public class LogEvent {
     }
 
     public Instant getIngestionTimestamp() {
-        return timestamp;
+        return ingestionTimestamp;
     }
 
-    public void setIngestionTimestamp(Instant timestamp) {
-        this.timestamp = timestamp;
-    }
+    public void setIngestionTimestamp(Instant ingestionTimestamp) {this.ingestionTimestamp = ingestionTimestamp; }
 
     public String getService() {
         return service;
@@ -124,6 +122,25 @@ public class LogEvent {
     //For getting only date
     public LocalDate getLogDate() {
         return this.timestamp.atZone(ZoneOffset.UTC).toLocalDate();
+    }
+
+    @Override
+    public String toString() {
+        return "LogEvent{" +
+                "logId='" + logId + '\'' +
+                ", host='" + host + '\'' +
+                ", env=" + env +
+                ", timestamp=" + timestamp +
+                ", ingestionTimestamp=" + ingestionTimestamp +
+                ", service='" + service + '\'' +
+                ", instanceId='" + instanceId + '\'' +
+                ", namespace='" + namespace + '\'' +
+                ", podName='" + podName + '\'' +
+                ", traceId='" + traceId + '\'' +
+                ", severityLevel=" + severityLevel +
+                ", message='" + message + '\'' +
+                ", attributes=" + attributes +
+                '}';
     }
 
 }

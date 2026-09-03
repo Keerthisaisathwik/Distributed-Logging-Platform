@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS logging.logs_by_id (
   trace_id text,
   log_level text,
   message text,
-  attributes map<text, text>
+  attributes map<text, text>,
 
   PRIMARY KEY ((host, log_id))
 );

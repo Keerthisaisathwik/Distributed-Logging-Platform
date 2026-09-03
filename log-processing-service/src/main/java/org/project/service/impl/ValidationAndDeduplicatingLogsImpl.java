@@ -8,6 +8,6 @@ public class ValidationAndDeduplicatingLogsImpl implements ValidationAndDeduplic
 
     @Override
     public DataStream<LogEvent> process(DataStream<LogEvent> stream) {
-        return null;
+        return stream;
     }
 }

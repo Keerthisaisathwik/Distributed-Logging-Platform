@@ -7,10 +7,7 @@ import org.apache.flink.streaming.api.functions.ProcessFunction;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.OutputTag;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.project.model.FailedLogEvent;
-import org.project.model.LogAttribute;
-import org.project.model.LogEvent;
-import org.project.model.LogLevel;
+import org.project.model.*;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -57,6 +54,8 @@ public class JsonToLogEventProcessFunction extends ProcessFunction<String, LogEv
             logEvent.setLogId(getText(json, "logId"));
 
             logEvent.setHost(getText(json, "host"));
+
+            logEvent.setEnv(parseEnvironment(getText(json, "env")));
 
             logEvent.setTimestamp(parseTimestamp(
                     firstNonBlank(getText(json, "timestamp")),
@@ -349,8 +348,30 @@ public class JsonToLogEventProcessFunction extends ProcessFunction<String, LogEv
             logEvent.setSeverityLevel(LogLevel.INFO);
         }
 
+        if (logEvent.getEnv() == null) {
+            throw new IllegalArgumentException("Environment is missing");
+        }
+
         if (logEvent.getMessage() == null || logEvent.getMessage().isBlank()) {
             throw new IllegalArgumentException("Log message is missing");
         }
+    }
+
+    private Environment parseEnvironment(String rawEnv) {
+        if (rawEnv == null || rawEnv.isBlank()) {
+            return null;
+        }
+
+        String normalized = rawEnv.trim().toLowerCase(Locale.ROOT);
+
+        return switch (normalized) {
+            case "dev" -> Environment.DEV;
+            case "test" -> Environment.TEST;
+            case "staging" -> Environment.STAGING;
+            case "prod" -> Environment.PROD;
+            default -> throw new IllegalArgumentException(
+                    "Unsupported environment: " + rawEnv
+            );
+        };
     }
 }

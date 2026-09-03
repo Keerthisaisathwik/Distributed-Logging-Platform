@@ -44,7 +44,6 @@ public class LogProcessingJob {
     public void start() throws Exception {
         String rawLogsTopicName = AppConfig.load().getKafkaRawTopic();
 
-        // Multi-broker string from application.properties: "kafka-1:9092,kafka-2:9092,kafka-3:9092"
         String bootstrapServers = AppConfig.load().getKafkaBootstrapServers();
 
         try {
