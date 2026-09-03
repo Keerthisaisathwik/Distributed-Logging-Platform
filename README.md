@@ -361,3 +361,23 @@ Rather than building a CRUD application, I wanted to understand how production l
 
 ---
 
+# Real-world AWS mapping for your project
+
+|-------------------------------------------|
+| Local Project | AWS Equivalent            |
+| ------------- | ------------------------- |
+| MinIO         | S3                        |
+| NGINX Ingress | ALB                       |
+| kind          | EKS                       |
+| Secret        | AWS Secrets Manager       |
+| ConfigMap     | SSM Parameter Store       |
+| Prometheus    | Amazon Managed Prometheus |
+| Grafana       | Amazon Managed Grafana    |
+| Elasticsearch | OpenSearch                |
+| Kafka         | MSK                       |
+| Local PVC     | EBS                       |
+| HPA           | HPA + Cluster Autoscaler  |
+---------------------------------------------
+
+---
+
