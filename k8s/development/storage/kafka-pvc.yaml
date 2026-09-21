@@ -1,0 +1,31 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: kafka-data
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/part-of: kafka
+# kind ships rancher/local-path-provisioner as its default provisioner.
+provisioner: rancher.io/local-path
+# Retain means the PV (and the data on the node) survives PVC deletion.
+reclaimPolicy: Retain
+# local-path cannot grow a volume in place so it is false. When using aws-ebs or other cloud storage, you can set this to true.
+allowVolumeExpansion: false
+volumeBindingMode: WaitForFirstConsumer
+
+# ---------------------------------------------------------------------------
+# Production replacement (example: AWS EBS gp3). 
+# ---------------------------------------------------------------------------
+# apiVersion: storage.k8s.io/v1
+# kind: StorageClass
+# metadata:
+#   name: kafka-data
+# provisioner: ebs.csi.aws.com
+# parameters:
+#   type: gp3
+#   iops: "6000"
+#   throughput: "250"
+#   encrypted: "true"
+# reclaimPolicy: Retain
+# allowVolumeExpansion: true
+# volumeBindingMode: WaitForFirstConsumer

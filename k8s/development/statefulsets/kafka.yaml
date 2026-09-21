@@ -1,0 +1,357 @@
+#   kafka-controller  - 3 replicas, node IDs 1..3,      process.roles=controller
+#   kafka-broker      - 3 replicas, node IDs 100..102,  process.roles=broker
+#
+# TWO VALUES MUST STAY IDENTICAL IN BOTH StatefulSets BELOW: CLUSTER_ID, KAFKA_CONTROLLER_QUORUM_VOTERS
+#
+# Need to add these values in configmaps/kafka.yaml.
+#
+# Need to generate cluster ID once, then never change it:
+#   docker run --rm apache/kafka:4.3.1 /opt/kafka/bin/kafka-storage.sh random-uuid
+#
+# Apply order: namespace -> storage -> services -> statefulsets
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka-controller
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/part-of: kafka
+spec:
+  serviceName: kafka-controller-headless
+  replicas: 3
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kafka
+      app.kubernetes.io/component: controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kafka
+        app.kubernetes.io/component: controller
+        app.kubernetes.io/part-of: kafka
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname # Apply my anti-affinity rule at the node level. /region -> region level, /zone -> zone level, /hostname -> node level.
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: kafka
+                    app.kubernetes.io/component: controller
+      containers:
+        - name: kafka
+          image: apache/kafka:4.3.1
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: false
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              ORDINAL="${POD_NAME##*-}"
+              export KAFKA_NODE_ID="$((NODE_ID_BASE + ORDINAL))"
+              echo "starting KRaft controller node.id=${KAFKA_NODE_ID}"
+              exec /etc/kafka/docker/run
+          ports:
+            - name: controller
+              containerPort: 9093
+              protocol: TCP
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: NODE_ID_BASE
+              value: "1"
+
+            # ---- must match the broker StatefulSet exactly ----
+            - name: CLUSTER_ID
+              value: "4L6g3nShT-eMCtK--X86sw"
+            - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+              value: "1@kafka-controller-0.kafka-controller-headless.kafka.svc.cluster.local:9093,2@kafka-controller-1.kafka-controller-headless.kafka.svc.cluster.local:9093,3@kafka-controller-2.kafka-controller-headless.kafka.svc.cluster.local:9093"
+            # ---------------------------------------------------
+
+            - name: KAFKA_PROCESS_ROLES
+              value: "controller"
+            - name: KAFKA_CONTROLLER_LISTENER_NAMES
+              value: "CONTROLLER"
+            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+              value: "CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT"
+            - name: KAFKA_LISTENERS
+              value: "CONTROLLER://0.0.0.0:9093"
+            # Deliberately no KAFKA_ADVERTISED_LISTENERS: a controller-only node
+            # must not advertise its controller listener.
+            - name: KAFKA_LOG_DIRS
+              value: "/var/lib/kafka/data"
+            - name: KAFKA_METADATA_LOG_MAX_RECORD_BYTES_BETWEEN_SNAPSHOTS
+              value: "20971520"
+            - name: KAFKA_HEAP_OPTS
+              value: "-Xms256m -Xmx256m"
+          resources:
+          # 1000m = 1 CPU core.
+            requests:
+              cpu: "100m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "768Mi"
+          startupProbe:
+            tcpSocket:
+              port: controller
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            tcpSocket:
+              port: controller
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: controller
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/kafka/data
+  # The volumeClaimTemplates gives each broker its own disk, while ReadWriteOnce prevents that disk from being shared across nodes.
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: kafka-data
+        resources:
+          requests:
+            storage: 5Gi
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka-broker
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: broker
+    app.kubernetes.io/part-of: kafka
+spec:
+  serviceName: kafka-headless
+  replicas: 3
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: RollingUpdate
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kafka
+      app.kubernetes.io/component: broker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kafka
+        app.kubernetes.io/component: broker
+        app.kubernetes.io/part-of: kafka
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 120
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: kafka
+                    app.kubernetes.io/component: broker
+      containers:
+        - name: kafka
+          image: apache/kafka:4.3.1
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: false
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              ORDINAL="${POD_NAME##*-}"
+              export KAFKA_NODE_ID="$((NODE_ID_BASE + ORDINAL))"
+              export KAFKA_ADVERTISED_LISTENERS="INTERNAL://${POD_NAME}.${HEADLESS_SERVICE}.${POD_NAMESPACE}.svc.cluster.local:9092"
+              echo "starting broker node.id=${KAFKA_NODE_ID} advertising ${KAFKA_ADVERTISED_LISTENERS}"
+              exec /etc/kafka/docker/run
+          ports:
+            - name: internal
+              containerPort: 9092
+              protocol: TCP
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: HEADLESS_SERVICE
+              value: "kafka-headless"
+            # 100-block keeps broker IDs from ever colliding with controller IDs.
+            - name: NODE_ID_BASE
+              value: "100"
+
+            # ---- must match the controller StatefulSet exactly ----
+            - name: CLUSTER_ID
+              value: "4L6g3nShT-eMCtK--X86sw"
+            - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+              value: "1@kafka-controller-0.kafka-controller-headless.kafka.svc.cluster.local:9093,2@kafka-controller-1.kafka-controller-headless.kafka.svc.cluster.local:9093,3@kafka-controller-2.kafka-controller-headless.kafka.svc.cluster.local:9093"
+            # -------------------------------------------------------
+
+            - name: KAFKA_PROCESS_ROLES
+              value: "broker"
+            - name: KAFKA_CONTROLLER_LISTENER_NAMES
+              value: "CONTROLLER"
+            - name: KAFKA_INTER_BROKER_LISTENER_NAME
+              value: "INTERNAL"
+            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+              value: "CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT"
+            - name: KAFKA_LISTENERS
+              value: "INTERNAL://0.0.0.0:9092"
+            - name: KAFKA_LOG_DIRS
+              value: "/var/lib/kafka/data"
+
+            # ---- durability defaults that assume >1 broker ----
+            - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+              value: "3"
+            - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+              value: "3"
+            - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+              value: "2"
+            - name: KAFKA_DEFAULT_REPLICATION_FACTOR
+              value: "3"
+            - name: KAFKA_MIN_INSYNC_REPLICAS
+              value: "2"
+            - name: KAFKA_NUM_PARTITIONS
+              value: "3"
+            # Silent data loss on an unclean election is worse than a stalled partition. Leave this false.
+            - name: KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE
+              value: "false"
+            # Typos should not create topics with the wrong partition count.
+            - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
+              value: "false"
+            - name: KAFKA_CONTROLLED_SHUTDOWN_ENABLE
+              value: "true"
+            - name: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS
+              value: "3000"
+            - name: KAFKA_LOG_RETENTION_HOURS
+              value: "168"
+            - name: KAFKA_LOG_SEGMENT_BYTES
+              value: "1073741824"
+            - name: KAFKA_NUM_NETWORK_THREADS
+              value: "4"
+            - name: KAFKA_NUM_IO_THREADS
+              value: "8"
+            - name: KAFKA_NUM_RECOVERY_THREADS_PER_DATA_DIR
+              value: "2"
+            - name: KAFKA_HEAP_OPTS
+              value: "-Xms768m -Xmx768m"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "1536Mi"
+          startupProbe:
+            tcpSocket:
+              port: internal
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 60
+          readinessProbe:
+            tcpSocket:
+              port: internal
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: internal
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/kafka/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: kafka-data
+        resources:
+          requests:
+            storage: 20Gi
+---
+# Stops a node drain from taking two voters at once and losing the quorum.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: kafka-controller
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kafka
+      app.kubernetes.io/component: controller
+---
+# With min.insync.replicas=2 and RF=3, one broker down is survivable and two is not. This makes the scheduler respect that.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: kafka-broker
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kafka
+      app.kubernetes.io/component: broker

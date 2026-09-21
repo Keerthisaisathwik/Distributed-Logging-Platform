@@ -1,0 +1,75 @@
+# Three services, each with a distinct job:
+#   kafka-controller-headless : stable DNS for the KRaft controller quorum
+#   kafka-headless            : stable per-broker DNS (advertised.listeners)
+#   kafka                     : the single bootstrap address clients use
+#   So basically they say, "don't give me one load-balanced IP; let me discover the individual pods."
+#   kafka-controller-headless : Controllers find each other
+#   kafka-headless            : Brokers find each other / stable broker DNS
+#   kafka                     : Clients initially connect to Kafka
+#
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-controller-headless
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/part-of: kafka
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: controller
+  ports:
+    - name: controller
+      port: 9093
+      targetPort: controller
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-headless
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: broker
+    app.kubernetes.io/part-of: kafka
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: broker
+  ports:
+    - name: internal
+      port: 9092
+      targetPort: internal
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: broker
+    app.kubernetes.io/part-of: kafka
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: broker
+  ports:
+    - name: internal
+      port: 9092
+      targetPort: internal
+      protocol: TCP
+  sessionAffinity: None
+# Kafka currently only knows how to talk to things inside Kubernetes. If your laptop connects through port-forwarding, Kafka will give your laptop an internal Kubernetes address that your laptop can't reach.
+# Either configure an external Kafka listener for your laptop, or temporarily run your Kafka client inside Kubernetes.
+#
+# I wrote this command to not forget how to run a Kafka client inside Kubernetes, and to not forget the `-L` option that lists all topics and partitions:
+#   kubectl -n kafka run kcat --rm -it --restart=Never \
+#     --image=edenhill/kcat:1.7.1 -- -b kafka:9092 -L
