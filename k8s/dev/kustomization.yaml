@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+configMapGenerator:
+  - name: fluent-bit-config
+    files:
+      - config/fluent-bit.conf
+
+  - name: fluent-bit-parsers
+    files:
+      - config/parsers.conf
+
+resources:
+  - deployments/file-ingestion.yaml
+  - services/file-ingestion.yaml

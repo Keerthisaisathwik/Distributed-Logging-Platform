@@ -95,7 +95,7 @@ spec:
             - name: CLUSTER_ID
               value: "4L6g3nShT-eMCtK--X86sw"
             - name: KAFKA_CONTROLLER_QUORUM_VOTERS
-              value: "1@kafka-controller-0.kafka-controller-headless.kafka.svc.cluster.local:9093,2@kafka-controller-1.kafka-controller-headless.kafka.svc.cluster.local:9093,3@kafka-controller-2.kafka-controller-headless.kafka.svc.cluster.local:9093"
+              value: "1@kafka-controller-0.kafka-controller-headless.dev.svc.cluster.local:9093,2@kafka-controller-1.kafka-controller-headless.dev.svc.cluster.local:9093,3@kafka-controller-2.kafka-controller-headless.dev.svc.cluster.local:9093"
             # ---------------------------------------------------
 
             - name: KAFKA_PROCESS_ROLES
@@ -243,7 +243,7 @@ spec:
             - name: CLUSTER_ID
               value: "4L6g3nShT-eMCtK--X86sw"
             - name: KAFKA_CONTROLLER_QUORUM_VOTERS
-              value: "1@kafka-controller-0.kafka-controller-headless.kafka.svc.cluster.local:9093,2@kafka-controller-1.kafka-controller-headless.kafka.svc.cluster.local:9093,3@kafka-controller-2.kafka-controller-headless.kafka.svc.cluster.local:9093"
+              value: "1@kafka-controller-0.kafka-controller-headless.dev.svc.cluster.local:9093,2@kafka-controller-1.kafka-controller-headless.dev.svc.cluster.local:9093,3@kafka-controller-2.kafka-controller-headless.dev.svc.cluster.local:9093"
             # -------------------------------------------------------
 
             - name: KAFKA_PROCESS_ROLES

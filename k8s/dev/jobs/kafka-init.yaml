@@ -1,0 +1,46 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-init
+  labels:
+    app: kafka-init
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        app: kafka-init
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      containers:
+        - name: kafka-init
+          image: apache/kafka:4.3.1
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -c
+            - |
+              echo "Waiting for Kafka..."
+
+              until /opt/kafka/bin/kafka-topics.sh \
+                --bootstrap-server kafka:9092 \
+                --list >/dev/null 2>&1
+              do
+                sleep 2
+              done
+
+              echo "Kafka is ready."
+
+              /opt/kafka/bin/kafka-topics.sh \
+                --bootstrap-server kafka:9092 \
+                --create \
+                --if-not-exists \
+                --topic logs.raw \
+                --partitions 4 \
+                --replication-factor 1
+
+              echo "Topics:"
+              /opt/kafka/bin/kafka-topics.sh \
+                --bootstrap-server kafka:9092 \
+                --list

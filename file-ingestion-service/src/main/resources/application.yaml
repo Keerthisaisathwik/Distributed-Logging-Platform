@@ -21,7 +21,7 @@ kafka:
     logs-raw: logs.raw
 
 file:
-  upload-dir=/app/uploads
+  upload-dir: /app/uploads
 
 management:
   endpoints:
@@ -29,3 +29,9 @@ management:
       exposure:
         include:
           - prometheus
+          - health
+
+  endpoint:
+    health:
+      probes:
+        enabled: true
