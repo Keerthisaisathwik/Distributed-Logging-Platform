@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-taskmanager
+  labels:
+    app: log-processing
+    component: taskmanager
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: log-processing
+      component: taskmanager
+  template:
+    metadata:
+      labels:
+        app: log-processing
+        component: taskmanager
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9249"
+    spec:
+      serviceAccountName: flink
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 9999
+        runAsGroup: 9999
+        fsGroup: 9999
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: log-processing
+              component: taskmanager
+      containers:
+        - name: taskmanager
+          image: keerthisaisathwik/log-processing-flink:latest
+          imagePullPolicy: IfNotPresent
+          args: ["taskmanager"]
+          ports:
+            - { name: rpc, containerPort: 6122 }
+            - { name: metrics, containerPort: 9249 }
+          envFrom:
+            - configMapRef:
+                name: flink-job-env
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: FLINK_PROPERTIES
+              value: |
+                kubernetes.namespace: $(POD_NAMESPACE)
+            - name: FLINK_CONF_DIR
+              value: /opt/flink/conf-k8s
+            # I intentionally wrote not to forget about this.
+            # Currently = not needed
+            # In Future = needed
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: flink-s3-credentials
+            #       key: access-key
+            # - name: AWS_SECRET_ACCESS_KEY
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: flink-s3-credentials
+            #       key: secret-key
+          resources:
+            requests: { cpu: "2", memory: 2Gi }
+            limits: { cpu: "4", memory: 2Gi }
+          startupProbe:
+            tcpSocket: { port: rpc }
+            periodSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            tcpSocket: { port: rpc }
+            periodSeconds: 30
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: flink
+              mountPath: /opt/flink/conf-k8s
+              readOnly: true
+      volumes:
+        - name: flink
+          configMap:
+            name: flink

@@ -57,21 +57,6 @@ public class LogProcessingJob {
     public void streamConsumer(String rawLogsTopicName, String bootstrapServers) throws Exception {
         StreamExecutionEnvironment environment = StreamExecutionEnvironment.getExecutionEnvironment();
 
-        // Flink Checkpoint externalized parameters
-        long checkpointInterval = AppConfig.load().getCheckpointIntervalMs();
-        environment.enableCheckpointing(checkpointInterval);
-
-        CheckpointConfig checkpointConfig = environment.getCheckpointConfig();
-        checkpointConfig.setCheckpointTimeout(AppConfig.load().getCheckpointTimeoutMs());
-        checkpointConfig.setMinPauseBetweenCheckpoints(AppConfig.load().getMinPauseBetweenCheckpointsMs());
-        checkpointConfig.setMaxConcurrentCheckpoints(1);
-
-        environment.configure(
-                new Configuration()
-                        .set(CheckpointingOptions.CHECKPOINTS_DIRECTORY,
-                                AppConfig.load().getCheckpointDir())
-        );
-
         String groupId = AppConfig.load().getKafkaGroupId();
         KafkaSource<String> kafkaSource = createStringConsumerForTopic(rawLogsTopicName, bootstrapServers, groupId);
 

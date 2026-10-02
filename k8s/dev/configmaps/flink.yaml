@@ -1,0 +1,92 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flink
+  labels:
+    app: log-processing
+data:
+  config.yaml: |
+    # ---- Cluster ----
+    jobmanager.rpc.port: 6123
+    jobmanager.bind-host: 0.0.0.0
+    jobmanager.memory.process.size: 1024m
+    taskmanager.rpc.port: 6122
+    taskmanager.bind-host: 0.0.0.0
+    taskmanager.memory.process.size: 2048m
+    taskmanager.numberOfTaskSlots: 4
+    blob.server.port: 6124
+    rest.port: 8081
+    rest.bind-address: 0.0.0.0
+    web.submit.enable: false
+    cluster.evenly-spread-out-slots: true
+    # 2 TaskManagers x 4 slots = 8 slots; parallelism 4 leaves room to reschedule if a TaskManager dies.
+    # (Parallelism set in the job code overrides this.)
+    parallelism.default: 4
+
+    # ---- Kubernetes HA (leader election in ConfigMaps, metadata on MinIO) ----
+    kubernetes.cluster-id: log-processing
+    high-availability.type: kubernetes
+    high-availability.storageDir: s3://flink/ha
+
+    # ---- State / checkpoints / savepoints (MinIO bucket "flink") ----
+    # hashmap is fine for mostly-stateless pipelines; switch to rocksdb for large keyed state.
+    state.backend.type: hashmap
+    execution.checkpointing.interval: 30s
+    execution.checkpointing.min-pause: 10s
+    execution.checkpointing.timeout: 5min
+    execution.checkpointing.max-concurrent-checkpoints: 1
+    execution.checkpointing.num-retained: 3
+
+    execution.checkpointing.storage: filesystem
+    execution.checkpointing.dir: s3://flink/checkpoints
+    execution.checkpointing.savepoint-dir: s3://flink/savepoints
+    execution.checkpointing.externalized-checkpoint-retention: RETAIN_ON_CANCELLATION
+    execution.checkpointing.tolerable-failed-checkpoints: 3
+
+    # ---- Restarts: keep retrying with backoff, never give up ----
+    restart-strategy.type: exponential-delay
+    restart-strategy.exponential-delay.initial-backoff: 1s
+    restart-strategy.exponential-delay.max-backoff: 1min
+    restart-strategy.exponential-delay.backoff-multiplier: 2.0
+    restart-strategy.exponential-delay.reset-backoff-threshold: 10min
+    restart-strategy.exponential-delay.jitter-factor: 0.1
+
+    # ---- S3 on MinIO ----
+    # Credentials come from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (env, from a Secret).
+    # If your Flink build doesn't pick them up, set s3.access-key / s3.secret-key instead.
+    s3.endpoint: http://minio:9000
+    s3.path.style.access: true
+    s3.endpoint.region: us-east-1
+
+    # ---- Metrics (port 9249 on every pod; pods have their own IPs so no 9249/9250 split) ----
+    metrics.reporters: prom
+    metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+    metrics.reporter.prom.port: 9249
+
+  log4j-console.properties: |
+    monitorInterval = 30
+    rootLogger.level = INFO
+    rootLogger.appenderRef.console.ref = ConsoleAppender
+    appender.console.name = ConsoleAppender
+    appender.console.type = CONSOLE
+    appender.console.layout.type = PatternLayout
+    appender.console.layout.pattern = %d{yyyy-MM-dd HH:mm:ss,SSS} %-5p %-60c %x - %m%n
+    logger.hadoop.name = org.apache.hadoop
+    logger.hadoop.level = WARN
+    logger.kafka.name = org.apache.kafka
+    logger.kafka.level = WARN
+    logger.cassandra.name = com.datastax
+    logger.cassandra.level = WARN
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flink-job-env
+  labels:
+    app: log-processing
+data:
+  KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  CASSANDRA_CONTACT_POINTS: cassandra:9042
+  ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+  S3_ENDPOINT: http://minio:9000
+  AWS_REGION: us-east-1

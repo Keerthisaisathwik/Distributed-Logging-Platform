@@ -1,0 +1,129 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: flink-jobmanager
+  labels:
+    app: log-processing
+    component: jobmanager
+spec:
+  parallelism: 2          # 1 leader + 1 standby (needs high-availability.type: kubernetes)
+  backoffLimit: 1000      # a streaming job must effectively never be given up on
+  template:
+    metadata:
+      labels:
+        app: log-processing
+        component: jobmanager
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9249"
+    spec:
+      serviceAccountName: flink
+      restartPolicy: OnFailure
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 9999
+        runAsGroup: 9999
+        fsGroup: 9999
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: log-processing
+              component: jobmanager
+      initContainers:
+        - name: wait-for-deps
+          image: busybox:1.37
+          env:
+            - name: WAIT_FOR
+              value: "kafka:9092 cassandra:9042 elasticsearch:9200 minio:9000"
+          command: ["sh", "-c"]
+          args:
+            - |
+              for target in $WAIT_FOR; do
+                host="${target%:*}"; port="${target#*:}"
+                echo "waiting for $host:$port"
+                until nc -z -w 2 "$host" "$port"; do sleep 2; done
+              done
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 32Mi }
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+      containers:
+        - name: jobmanager
+          image: keerthisaisathwik/log-processing-flink:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - standalone-job
+            - --host
+            - $(POD_IP)      # required with HA: JobManagers advertise their pod IP
+          ports:
+            - { name: rpc, containerPort: 6123 }
+            - { name: blob, containerPort: 6124 }
+            - { name: rest, containerPort: 8081 }
+            - { name: metrics, containerPort: 9249 }
+          envFrom:
+            - configMapRef:
+                name: flink-job-env
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: FLINK_PROPERTIES
+              value: |
+                kubernetes.namespace: $(POD_NAMESPACE)
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: FLINK_CONF_DIR
+              value: /opt/flink/conf-k8s
+            # I intentionally wrote not to forget about this. Need this comment in my repo.
+            # Currently = not needed
+            # In Future = needed
+            # - name: AWS_ACCESS_KEY_ID
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: flink-s3-credentials
+            #       key: access-key
+            # - name: AWS_SECRET_ACCESS_KEY
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: flink-s3-credentials
+            #       key: secret-key
+          resources:
+            requests: { cpu: 500m, memory: 1Gi }
+            limits: { cpu: "1", memory: 1Gi }
+          startupProbe:
+            tcpSocket: { port: rpc }
+            periodSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            tcpSocket: { port: rpc }
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket: { port: rest }
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: flink
+              mountPath: /opt/flink/conf-k8s
+              readOnly: true
+      volumes:
+        - name: flink
+          configMap:
+            name: flink

@@ -1,0 +1,5 @@
+# I am currently not using this namespace.yaml file. Just for information.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev

@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-init
+  labels:
+    app: minio-init
+spec:
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        app: minio-init
+    spec:
+      restartPolicy: OnFailure
+
+      containers:
+        - name: minio-init
+          image: coollabsio/minio:RELEASE.2025-10-15T17-29-55Z
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+
+              echo "Waiting for MinIO..."
+
+              until mc alias set local http://minio:9000 admin minioadmin >/dev/null 2>&1
+              do
+                echo "MinIO not ready..."
+                sleep 3
+              done
+
+              echo "MinIO ready."
+
+              echo "Creating logging bucket..."
+              mc mb --ignore-existing local/logging
+
+              echo "MinIO bucket initialization complete."

@@ -38,7 +38,7 @@ spec:
                 --if-not-exists \
                 --topic logs.raw \
                 --partitions 4 \
-                --replication-factor 1
+                --replication-factor 3
 
               echo "Topics:"
               /opt/kafka/bin/kafka-topics.sh \

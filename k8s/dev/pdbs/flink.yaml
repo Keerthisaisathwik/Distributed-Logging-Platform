@@ -1,0 +1,25 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: flink-jobmanager
+  labels:
+    app: log-processing
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: log-processing
+      component: jobmanager
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: flink-taskmanager
+  labels:
+    app: log-processing
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: log-processing
+      component: taskmanager

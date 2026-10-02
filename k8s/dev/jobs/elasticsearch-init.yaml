@@ -1,0 +1,83 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: elasticsearch-init
+  labels:
+    app: elasticsearch-init
+
+spec:
+  backoffLimit: 5
+
+  template:
+    metadata:
+      labels:
+        app: elasticsearch-init
+
+    spec:
+      restartPolicy: OnFailure
+
+      containers:
+        - name: elasticsearch-init
+          image: curlimages/curl:8.18.0
+
+          env:
+            - name: ELASTIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: elasticsearch-credentials
+                  key: password
+
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+
+              echo "Waiting for Elasticsearch..."
+
+              until curl -k -s \
+                  -u "elastic:${ELASTIC_PASSWORD}" \
+                  https://elasticsearch:9200 >/dev/null
+              do
+                echo "Elasticsearch not ready..."
+                sleep 2
+              done
+
+              echo "Elasticsearch is responding."
+
+              until curl -k -s \
+                  -u "elastic:${ELASTIC_PASSWORD}" \
+                  https://elasticsearch:9200/_cluster/health \
+                  | grep -q '"status"'
+              do
+                echo "Waiting for Elasticsearch cluster..."
+                sleep 2
+              done
+
+              if curl -k -s \
+                  -o /dev/null \
+                  -w "%{http_code}" \
+                  -u "elastic:${ELASTIC_PASSWORD}" \
+                  https://elasticsearch:9200/logs \
+                  | grep -q "200"; then
+
+                echo "Index logs already exists."
+
+              else
+
+                echo "Creating logs index..."
+
+                curl -k -X PUT \
+                    -u "elastic:${ELASTIC_PASSWORD}" \
+                    "https://elasticsearch:9200/logs" \
+                    -H "Content-Type: application/json" \
+                    -d '{
+                      "settings": {
+                        "number_of_shards": 1,
+                        "number_of_replicas": 0
+                      }
+                    }'
+
+              fi
+
+              echo "Elasticsearch initialization complete."

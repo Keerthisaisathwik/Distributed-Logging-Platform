@@ -1,0 +1,120 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cassandra
+  labels:
+    app: cassandra
+spec:
+  serviceName: cassandra-headless
+  replicas: 3
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: cassandra
+  template:
+    metadata:
+      labels:
+        app: cassandra
+    spec:
+      terminationGracePeriodSeconds: 600
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: cassandra
+                topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: init-sysctl
+          image: busybox:1.36
+          securityContext:
+            privileged: true
+          command: ["sh", "-c", "sysctl -w vm.max_map_count=1048575"]
+      containers:
+        - name: cassandra
+          image: cassandra:5.0
+          ports:
+            - name: intra-node
+              containerPort: 7000
+            - name: tls-intra-node
+              containerPort: 7001
+            - name: jmx
+              containerPort: 7199
+            - name: cql
+              containerPort: 9042
+          envFrom:
+            - configMapRef:
+                name: cassandra
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: CASSANDRA_SEEDS
+              value: "cassandra-0.cassandra-headless"
+            - name: CASSANDRA_LISTEN_ADDRESS
+              value: "$(POD_IP)"
+            - name: CASSANDRA_BROADCAST_ADDRESS
+              value: "$(POD_IP)"
+            - name: CASSANDRA_BROADCAST_RPC_ADDRESS
+              value: "$(POD_IP)"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1536Mi"
+            limits:
+              cpu: "1500m"
+              memory: "2Gi"
+          volumeMounts:
+            - name: cassandra-data
+              mountPath: /var/lib/cassandra
+          readinessProbe:
+            exec:
+              command:
+                - /bin/bash
+                - -c
+                - "nodetool status | grep -E \"^UN\\s+$POD_IP\""
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+          livenessProbe:
+            tcpSocket:
+              port: 9042
+            initialDelaySeconds: 90
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/bash", "-c", "nodetool drain"]
+      volumes: []
+  volumeClaimTemplates:
+    - metadata:
+        name: cassandra-data
+        labels:
+          app: cassandra
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: standard
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cassandra-pdb
+  labels:
+    app: cassandra
+spec:
+  # With replicas: 3 and RF=3, losing 2 at once breaks QUORUM reads/writes.
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: cassandra

@@ -11,5 +11,44 @@ configMapGenerator:
       - config/parsers.conf
 
 resources:
-  - deployments/file-ingestion.yaml
+  # Storage
+  - storage/kafka-pvc.yaml
+  - storage/minio-pvc.yaml
+
+  # ConfigMaps
+  - configmaps/cassandra.yaml
+  - configmaps/elasticsearch.yaml
+  - configmaps/minio.yaml
+  - configmaps/flink.yaml
+
+  # RBAC
+  - rbac/flink.yaml
+
+  # Services
+  - services/cassandra.yaml
+  - services/elasticsearch.yaml
   - services/file-ingestion.yaml
+  # - services/log-processing.yaml (not needed)
+  - services/kafka.yaml
+  - services/minio.yaml
+
+  # StatefulSets
+  - statefulsets/kafka.yaml
+  - statefulsets/cassandra.yaml
+  - statefulsets/elasticsearch.yaml
+  - statefulsets/minio.yaml
+
+  # Jobs
+  - jobs/cassandra-init.yaml
+  - jobs/elasticsearch-init.yaml
+  - jobs/jobmanager.yaml
+  - jobs/kafka-init.yaml
+  - jobs/minio-init.yaml
+
+  # PDBs
+  - pdbs/flink.yaml
+
+  # Deployments
+  - deployments/file-ingestion.yaml
+  # - deployments/log-processing.yaml (not needed)
+  - deployments/taskmanager.yaml
