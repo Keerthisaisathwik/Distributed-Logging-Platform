@@ -1,0 +1,7 @@
+Shell scripts must use Unix line endings
+
+*.sh text eol=lf
+
+Repository configuration files
+
+.gitattributes text eol=lf .gitignore text eol=lf .editorconfig text eol=lf
