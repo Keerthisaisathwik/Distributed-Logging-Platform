@@ -5,14 +5,16 @@ metadata:
   labels:
     app: log-processing
     component: jobmanager
+    cassandra-client: "true"
 spec:
-  parallelism: 2          # 1 leader + 1 standby (needs high-availability.type: kubernetes)
+  parallelism: 1          # 1 leader + 1 standby (needs high-availability.type: kubernetes)
   backoffLimit: 1000      # a streaming job must effectively never be given up on
   template:
     metadata:
       labels:
         app: log-processing
         component: jobmanager
+        cassandra-client: "true"
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "9249"
@@ -64,8 +66,8 @@ spec:
           imagePullPolicy: IfNotPresent
           args:
             - standalone-job
-            - --host
-            - $(POD_IP)      # required with HA: JobManagers advertise their pod IP
+            - -D
+            - jobmanager.rpc.address=flink-jobmanager      # required with HA: JobManagers advertise their pod IP
           ports:
             - { name: rpc, containerPort: 6123 }
             - { name: blob, containerPort: 6124 }
@@ -88,19 +90,26 @@ spec:
                   fieldPath: status.podIP
             - name: FLINK_CONF_DIR
               value: /opt/flink/conf-k8s
-            # I intentionally wrote not to forget about this. Need this comment in my repo.
-            # Currently = not needed
-            # In Future = needed
-            # - name: AWS_ACCESS_KEY_ID
-            #   valueFrom:
-            #     secretKeyRef:
-            #       name: flink-s3-credentials
-            #       key: access-key
-            # - name: AWS_SECRET_ACCESS_KEY
-            #   valueFrom:
-            #     secretKeyRef:
-            #       name: flink-s3-credentials
-            #       key: secret-key
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: root-user
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: root-password
+            - name: CASSANDRA_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: cassandra-admin-credentials
+                  key: username
+            - name: CASSANDRA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cassandra-admin-credentials
+                  key: password
           resources:
             requests: { cpu: 500m, memory: 1Gi }
             limits: { cpu: "1", memory: 1Gi }

@@ -6,7 +6,7 @@ metadata:
     app: elasticsearch
 spec:
   serviceName: elasticsearch-headless
-  replicas: 3
+  replicas: 1
   podManagementPolicy: Parallel
 
   updateStrategy:
@@ -95,7 +95,7 @@ spec:
               command:
                 - bash
                 - -c
-                - "curl -s -k -u \"elastic:${ELASTIC_PASSWORD}\" -o /dev/null -w '%{http_code}' https://localhost:9200 | grep -q 200"
+                - "curl -s -k -u \"elastic:${ELASTIC_PASSWORD}\" -o /dev/null -w '%{http_code}' http://localhost:9200 | grep -q 200"
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 30
@@ -105,7 +105,7 @@ spec:
               command:
                 - bash
                 - -c
-                - "curl -s -k -u \"elastic:${ELASTIC_PASSWORD}\" https://localhost:9200/_cluster/health?local=true | grep -vq '\"status\":\"red\"'"
+                - "curl -s -k -u \"elastic:${ELASTIC_PASSWORD}\" http://localhost:9200/_cluster/health?local=true | grep -vq '\"status\":\"red\"'"
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
@@ -115,7 +115,7 @@ spec:
               command:
                 - bash
                 - -c
-                - "curl -s -k -u \"elastic:${ELASTIC_PASSWORD}\" -o /dev/null -w '%{http_code}' https://localhost:9200 | grep -q 200"
+                - "curl -s -k -u \"elastic:${ELASTIC_PASSWORD}\" -o /dev/null -w '%{http_code}' http://localhost:9200 | grep -q 200"
             periodSeconds: 20
             timeoutSeconds: 10
             failureThreshold: 5

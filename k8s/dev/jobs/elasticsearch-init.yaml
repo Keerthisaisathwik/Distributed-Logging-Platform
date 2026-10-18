@@ -37,7 +37,7 @@ spec:
 
               until curl -k -s \
                   -u "elastic:${ELASTIC_PASSWORD}" \
-                  https://elasticsearch:9200 >/dev/null
+                  http://elasticsearch:9200 >/dev/null
               do
                 echo "Elasticsearch not ready..."
                 sleep 2
@@ -47,7 +47,7 @@ spec:
 
               until curl -k -s \
                   -u "elastic:${ELASTIC_PASSWORD}" \
-                  https://elasticsearch:9200/_cluster/health \
+                  http://elasticsearch:9200/_cluster/health \
                   | grep -q '"status"'
               do
                 echo "Waiting for Elasticsearch cluster..."
@@ -58,7 +58,7 @@ spec:
                   -o /dev/null \
                   -w "%{http_code}" \
                   -u "elastic:${ELASTIC_PASSWORD}" \
-                  https://elasticsearch:9200/logs \
+                  http://elasticsearch:9200/logs \
                   | grep -q "200"; then
 
                 echo "Index logs already exists."
@@ -69,7 +69,7 @@ spec:
 
                 curl -k -X PUT \
                     -u "elastic:${ELASTIC_PASSWORD}" \
-                    "https://elasticsearch:9200/logs" \
+                    "http://elasticsearch:9200/logs" \
                     -H "Content-Type: application/json" \
                     -d '{
                       "settings": {

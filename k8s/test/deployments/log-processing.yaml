@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: log-processing
+  labels:
+    app: log-processing
+    app.kubernetes.io/part-of: distributed-logging-platform
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: log-processing
+  template:
+    metadata:
+      labels:
+        app: log-processing
+    spec:
+      securityContext:
+        fsGroup: 10002
+        fsGroupChangePolicy: OnRootMismatch
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: log-processing
+          image: keerthisaisathwik/log-processing-service:latest
+          imagePullPolicy: IfNotPresent
+          command: ["java", "-jar", "/app/app.jar"]
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 5"]

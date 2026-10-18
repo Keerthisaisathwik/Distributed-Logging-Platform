@@ -35,4 +35,7 @@ spec:
               echo "Creating logging bucket..."
               mc mb --ignore-existing local/logging
 
+              echo "Creating flink bucket..."
+              mc mb --ignore-existing local/flink
+
               echo "MinIO bucket initialization complete."

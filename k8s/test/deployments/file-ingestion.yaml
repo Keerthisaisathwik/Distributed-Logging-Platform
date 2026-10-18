@@ -1,0 +1,126 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: file-ingestion
+  labels:
+    app: file-ingestion
+    app.kubernetes.io/part-of: distributed-logging-platform
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: file-ingestion
+  template:
+    metadata:
+      labels:
+        app: file-ingestion
+    spec:
+      securityContext:
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: file-ingestion
+          image: keerthisaisathwik/file-ingestion-service:latest
+          imagePullPolicy: IfNotPresent
+          command: ["java", "-jar", "/app/app.jar"]
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: uploads
+              mountPath: /app/uploads
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 5"]
+
+        - name: fluent-bit
+          image: fluent/fluent-bit:3.2
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: monitoring
+              containerPort: 2020
+          volumeMounts:
+            - name: uploads
+              mountPath: /app/uploads
+            - name: fluent-bit-config
+              mountPath: /fluent-bit/etc/fluent-bit.conf
+              subPath: fluent-bit.conf
+            - name: fluent-bit-parsers
+              mountPath: /fluent-bit/etc/parsers.conf
+              subPath: parsers.conf
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          readinessProbe:
+            tcpSocket:
+              port: 2020
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: 2020
+            periodSeconds: 15
+            failureThreshold: 3
+
+      volumes:
+        - name: uploads
+          emptyDir: {}
+        - name: fluent-bit-config
+          configMap:
+            name: fluent-bit-config
+        - name: fluent-bit-parsers
+          configMap:
+            name: fluent-bit-parsers

@@ -66,6 +66,8 @@ public class CassandraSink extends RichSinkFunction<LogEvent> implements Checkpo
     private final long flushIntervalMs;
     private final int maxConcurrentRequests;
     private final int maxRetries;
+    private final String cassandraUsername;
+    private final String cassandraPassword;
 
     // Driver & Statements
     private transient CqlSession session;
@@ -102,7 +104,9 @@ public class CassandraSink extends RichSinkFunction<LogEvent> implements Checkpo
             long maxBatchSizeBytes,
             long flushIntervalMs,
             int maxConcurrentRequests,
-            int maxRetries
+            int maxRetries,
+            String cassandraUsername,
+            String cassandraPassword
     ) {
         this.contactPoints = parseContactPoints(contactPointsStr);
         this.port = port;
@@ -113,6 +117,8 @@ public class CassandraSink extends RichSinkFunction<LogEvent> implements Checkpo
         this.flushIntervalMs = flushIntervalMs;
         this.maxConcurrentRequests = maxConcurrentRequests;
         this.maxRetries = maxRetries;
+        this.cassandraUsername = cassandraUsername;
+        this.cassandraPassword = cassandraPassword;
     }
 
     private static List<String> parseContactPoints(String contactPointsStr) {
@@ -131,10 +137,15 @@ public class CassandraSink extends RichSinkFunction<LogEvent> implements Checkpo
                 .map(host -> new InetSocketAddress(host.trim(), port))
                 .collect(Collectors.toList());
 
+        if (cassandraUsername == null || cassandraUsername.isBlank() || cassandraPassword == null || cassandraPassword.isBlank()) {
+            throw new IllegalArgumentException("Cassandra username and password must be configured");
+        }
+
         session = CqlSession.builder()
                 .addContactPoints(socketAddresses)
                 .withLocalDatacenter(localDataCenter)
                 .withKeyspace(keyspace)
+                .withAuthCredentials(cassandraUsername, cassandraPassword)
                 .build();
 
         serviceStatement = session.prepare("""

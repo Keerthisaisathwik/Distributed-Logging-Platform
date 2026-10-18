@@ -21,8 +21,12 @@ resources:
   - configmaps/minio.yaml
   - configmaps/flink.yaml
 
+  # NetworkPolicies
+  - networkpolicies/cassandra-network-policy.yaml
+
   # RBAC
   - rbac/flink.yaml
+  - rbac/cassandra-service-account.yaml
 
   # Services
   - services/cassandra.yaml
@@ -31,14 +35,16 @@ resources:
   # - services/log-processing.yaml (not needed)
   - services/kafka.yaml
   - services/minio.yaml
+  - services/flink.yaml
 
   # StatefulSets
   - statefulsets/kafka.yaml
-  - statefulsets/cassandra.yaml
   - statefulsets/elasticsearch.yaml
+  - statefulsets/cassandra.yaml
   - statefulsets/minio.yaml
 
   # Jobs
+  - jobs/cassandra-authorization.yaml
   - jobs/cassandra-init.yaml
   - jobs/elasticsearch-init.yaml
   - jobs/jobmanager.yaml

@@ -1,14 +1,161 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: cassandra
+  name: cassandra-config
   labels:
-    app: cassandra
+    app.kubernetes.io/name: cassandra
 data:
   CASSANDRA_CLUSTER_NAME: "logging-cluster"
   CASSANDRA_DC: "datacenter1"
   CASSANDRA_RACK: "rack1"
   CASSANDRA_ENDPOINT_SNITCH: "GossipingPropertyFileSnitch"
-  CASSANDRA_RPC_ADDRESS: "0.0.0.0"
+  CASSANDRA_SEEDS: "cassandra-0.cassandra-headless.dev.svc.cluster.local"
   MAX_HEAP_SIZE: "1G"
-  HEAP_NEWSIZE: "256M"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cassandra-scripts
+  labels:
+    app.kubernetes.io/name: cassandra
+data:
+  entrypoint.sh: |
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    CONF=/etc/cassandra/cassandra.yaml
+
+    # Turn on authentication/authorization. Handles both the one-line and the
+    # nested "class_name:" layouts of cassandra.yaml, and aborts if the setting
+    # could not be applied, so a node can never start with auth silently off.
+    enable() {
+      local key="$1" value="$2"
+      sed -i -E \
+        -e "s/^(${key}):.*/\1: ${value}/" \
+        -e "/^${key}: ${value}\$/{n;/^[[:space:]]+class_name[[:space:]]*:/d;}" \
+        "${CONF}"
+      grep -qE "^${key}: ${value}\$" "${CONF}"
+    }
+    enable authenticator PasswordAuthenticator
+    enable authorizer CassandraAuthorizer
+
+    # The seed's DNS record must resolve before Cassandra starts, otherwise it
+    # exits with "seed provider lists no seeds" (pod 0 is its own seed).
+    seed="${CASSANDRA_SEEDS%%,*}"
+    until getent hosts "${seed}" >/dev/null 2>&1; do
+      echo "waiting for DNS record of seed ${seed}"
+      sleep 2
+    done
+
+    # The official image entrypoint applies the CASSANDRA_* env vars to the config.
+    exec docker-entrypoint.sh cassandra -f
+
+  bootstrap-auth.sh: |
+    #!/usr/bin/env bash
+    # One-time authentication bootstrap. Idempotent: safe to re-run.
+    #   1. waits until the cluster accepts logins and all nodes have joined
+    #   2. moves system_auth to NetworkTopologyStrategy RF=3 (default is RF=1,
+    #      which makes every login depend on a single node)
+    #   3. syncs the auth tables to all replicas (read-repair sweep at CL ALL)
+    #   4. creates the admin superuser from the Secret
+    #   5. disables the well-known default cassandra/cassandra account
+    set -euo pipefail
+
+    HOST="${CQL_HOST:-cassandra.dev.svc.cluster.local}"
+    ADMIN_USER="${CASSANDRA_USER:?CASSANDRA_USER is not set}"
+    ADMIN_PASSWORD="${CASSANDRA_PASSWORD:?CASSANDRA_PASSWORD is not set}"
+    DC="${CASSANDRA_DC:?CASSANDRA_DC is not set}"
+    EXPECTED_NODES="${EXPECTED_NODES:-3}"
+    AUTH_RF="${SYSTEM_AUTH_RF:-3}"
+    Q="'"
+
+    log() { echo "[$(date -u +%H:%M:%S)] $*"; }
+
+    [[ "${ADMIN_USER}" =~ ^[A-Za-z][A-Za-z0-9_]*$ ]] \
+      || { log "ERROR: username must match [A-Za-z][A-Za-z0-9_]*"; exit 1; }
+    [ "${ADMIN_USER}" != "cassandra" ] \
+      || { log "ERROR: choose an admin username other than 'cassandra' (that role gets disabled)"; exit 1; }
+
+    cql() { # user password statement
+      cqlsh "${HOST}" 9042 --connect-timeout=30 --request-timeout=120 \
+        -u "$1" -p "$2" -e "$3"
+    }
+
+    retry() { # attempts command...
+      local n="$1" i
+      shift
+      for ((i = 1; i <= n; i++)); do
+        if "$@"; then return 0; fi
+        log "  attempt ${i}/${n} failed, retrying in 10s"
+        sleep 10
+      done
+      return 1
+    }
+
+    peer_count() {
+      local out
+      out="$(cql cassandra cassandra "SELECT peer FROM system.peers_v2" 2>/dev/null)" || { echo 0; return 0; }
+      sed -n -E 's/^\(([0-9]+) rows\)$/\1/p' <<<"${out}" | head -n1
+    }
+
+    # Read every system_auth table at CL ALL: blocking read-repair copies any
+    # row that is missing on a replica, in a single authenticated session.
+    sweep() { # user password
+      local tables stmt t
+      tables="$(cql "$1" "$2" "SELECT table_name FROM system_schema.tables WHERE keyspace_name = 'system_auth'" \
+        | awk 'NF == 1 && $1 ~ /^[a-z_]+$/ && $1 != "table_name" { print $1 }')" || return 1
+      [ -n "${tables}" ] || return 1
+      stmt="CONSISTENCY ALL;"
+      for t in ${tables}; do stmt+=" SELECT * FROM system_auth.${t};"; done
+      cql "$1" "$2" "${stmt}" >/dev/null
+    }
+
+    log "Waiting for CQL to accept logins"
+    ready=""
+    for ((i = 1; i <= 180; i++)); do
+      if cql "${ADMIN_USER}" "${ADMIN_PASSWORD}" "SELECT now() FROM system.local" >/dev/null 2>&1; then
+        log "Admin role '${ADMIN_USER}' already works - nothing to do."
+        exit 0
+      fi
+      if cql cassandra cassandra "SELECT now() FROM system.local" >/dev/null 2>&1; then
+        ready=1
+        break
+      fi
+      sleep 10
+    done
+    [ -n "${ready}" ] || { log "ERROR: cluster never became reachable"; exit 1; }
+
+    log "Waiting for ${EXPECTED_NODES} nodes to join"
+    while :; do
+      n="$(peer_count)"
+      n="${n:-0}"
+      [ "$((n + 1))" -ge "${EXPECTED_NODES}" ] && break
+      log "  $((n + 1))/${EXPECTED_NODES} nodes visible"
+      sleep 10
+    done
+
+    log "system_auth -> NetworkTopologyStrategy {${DC}: ${AUTH_RF}}"
+    retry 6 cql cassandra cassandra \
+      "ALTER KEYSPACE system_auth WITH replication = {'class': 'NetworkTopologyStrategy', '${DC}': ${AUTH_RF}}"
+    retry 12 sweep cassandra cassandra
+
+    log "Creating superuser '${ADMIN_USER}'"
+    PW="${ADMIN_PASSWORD//${Q}/${Q}${Q}}"
+    retry 12 cql cassandra cassandra \
+      "CREATE ROLE IF NOT EXISTS \"${ADMIN_USER}\" WITH SUPERUSER = true AND LOGIN = true AND PASSWORD = '${PW}'"
+    retry 12 cql cassandra cassandra \
+      "ALTER ROLE \"${ADMIN_USER}\" WITH SUPERUSER = true AND LOGIN = true AND PASSWORD = '${PW}'"
+    retry 12 cql "${ADMIN_USER}" "${ADMIN_PASSWORD}" "SELECT now() FROM system.local" >/dev/null
+
+    log "Disabling the default 'cassandra' account"
+    RANDOM_PW="$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+    retry 12 cql "${ADMIN_USER}" "${ADMIN_PASSWORD}" \
+      "ALTER ROLE cassandra WITH PASSWORD = '${RANDOM_PW}' AND SUPERUSER = false AND LOGIN = false"
+    retry 12 sweep "${ADMIN_USER}" "${ADMIN_PASSWORD}"
+
+    sleep 5 # auth cache validity is 2s
+    if cql cassandra cassandra "SELECT now() FROM system.local" >/dev/null 2>&1; then
+      log "ERROR: default cassandra/cassandra login still works"
+      exit 1
+    fi
+    log "Done. Authenticate as '${ADMIN_USER}'."

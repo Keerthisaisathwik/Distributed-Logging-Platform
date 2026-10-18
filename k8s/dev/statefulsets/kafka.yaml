@@ -20,7 +20,7 @@ metadata:
     app.kubernetes.io/part-of: kafka
 spec:
   serviceName: kafka-controller-headless
-  replicas: 3
+  replicas: 1
   podManagementPolicy: Parallel
   updateStrategy:
     type: RollingUpdate
@@ -95,7 +95,7 @@ spec:
             - name: CLUSTER_ID
               value: "4L6g3nShT-eMCtK--X86sw"
             - name: KAFKA_CONTROLLER_QUORUM_VOTERS
-              value: "1@kafka-controller-0.kafka-controller-headless:9093,2@kafka-controller-1.kafka-controller-headless:9093,3@kafka-controller-2.kafka-controller-headless:9093"
+              value: "1@kafka-controller-0.kafka-controller-headless:9093"
             # ---------------------------------------------------
 
             - name: KAFKA_PROCESS_ROLES
@@ -164,7 +164,7 @@ metadata:
     app.kubernetes.io/part-of: kafka
 spec:
   serviceName: kafka-headless
-  replicas: 3
+  replicas: 1
   podManagementPolicy: Parallel
   updateStrategy:
     type: RollingUpdate
@@ -243,7 +243,7 @@ spec:
             - name: CLUSTER_ID
               value: "4L6g3nShT-eMCtK--X86sw"
             - name: KAFKA_CONTROLLER_QUORUM_VOTERS
-              value: "1@kafka-controller-0.kafka-controller-headless:9093,2@kafka-controller-1.kafka-controller-headless:9093,3@kafka-controller-2.kafka-controller-headless:9093"
+              value: "1@kafka-controller-0.kafka-controller-headless:9093"
             # -------------------------------------------------------
 
             - name: KAFKA_PROCESS_ROLES
@@ -261,17 +261,17 @@ spec:
 
             # ---- durability defaults that assume >1 broker ----
             - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
-              value: "3"
+              value: "1"
             - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
-              value: "3"
+              value: "1"
             - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
-              value: "2"
+              value: "1"
             - name: KAFKA_DEFAULT_REPLICATION_FACTOR
-              value: "3"
+              value: "1"
             - name: KAFKA_MIN_INSYNC_REPLICAS
-              value: "2"
+              value: "1"
             - name: KAFKA_NUM_PARTITIONS
-              value: "3"
+              value: "1"
             # Silent data loss on an unclean election is worse than a stalled partition. Leave this false.
             - name: KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE
               value: "false"

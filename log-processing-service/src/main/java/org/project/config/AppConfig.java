@@ -17,11 +17,15 @@ public class AppConfig {
 
     private final String elasticsearchHost;
     private final int elasticsearchPort;
+    private final String elasticUsername;
+    private final String elasticPassword;
 
     private final String cassandraContactPoints;
     private final int cassandraPort;
     private final String cassandraLocalDatacenter;
     private final String cassandraKeyspace;
+    private final String cassandraUsername;
+    private final String cassandraPassword;
 
     private final int cassandraMaxBatchLogEvents;
     private final long cassandraMaxBatchSizeBytes;
@@ -46,11 +50,15 @@ public class AppConfig {
 
         this.elasticsearchHost = properties.getProperty("elasticsearch.host");
         this.elasticsearchPort = Integer.parseInt(properties.getProperty("elasticsearch.port"));
+        this.elasticUsername = properties.getProperty("elasticsearch.username");
+        this.elasticPassword = properties.getProperty("elasticsearch.password");
 
         this.cassandraContactPoints = properties.getProperty("cassandra.contact-points");
         this.cassandraPort = Integer.parseInt(properties.getProperty("cassandra.port"));
         this.cassandraLocalDatacenter = properties.getProperty("cassandra.local-datacenter");
         this.cassandraKeyspace = properties.getProperty("cassandra.keyspace");
+        this.cassandraUsername = properties.getProperty("cassandra.username");
+        this.cassandraPassword = properties.getProperty("cassandra.password");
 
         this.cassandraMaxBatchLogEvents = Integer.parseInt(properties.getProperty("cassandra.max-batch-log-events"));
         this.cassandraMaxBatchSizeBytes = Long.parseLong(properties.getProperty("cassandra.max-batch-size-bytes"));
@@ -118,6 +126,14 @@ public class AppConfig {
         return elasticsearchPort;
     }
 
+    public String getElasticUsername() {
+        return elasticUsername;
+    }
+
+    public String getElasticPassword() {
+        return elasticPassword;
+    }
+
     public String getCassandraContactPoints() {
         return cassandraContactPoints;
     }
@@ -132,6 +148,14 @@ public class AppConfig {
 
     public String getCassandraKeyspace() {
         return cassandraKeyspace;
+    }
+
+    public String getCassandraUsername() {
+        return cassandraUsername;
+    }
+
+    public String getCassandraPassword() {
+        return cassandraPassword;
     }
 
     public int getCassandraMaxBatchLogEvents() {

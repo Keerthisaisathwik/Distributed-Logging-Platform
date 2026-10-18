@@ -6,7 +6,7 @@ metadata:
     app: file-ingestion
     app.kubernetes.io/part-of: distributed-logging-platform
 spec:
-  replicas: 2
+  replicas: 1
   revisionHistoryLimit: 5
   strategy:
     type: RollingUpdate

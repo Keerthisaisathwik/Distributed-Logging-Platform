@@ -5,8 +5,9 @@ metadata:
   labels:
     app: log-processing
     component: taskmanager
+    cassandra-client: "true"
 spec:
-  replicas: 2
+  replicas: 1
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -21,6 +22,7 @@ spec:
       labels:
         app: log-processing
         component: taskmanager
+        cassandra-client: "true"
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "9249"
@@ -63,6 +65,16 @@ spec:
                 kubernetes.namespace: $(POD_NAMESPACE)
             - name: FLINK_CONF_DIR
               value: /opt/flink/conf-k8s
+            - name: CASSANDRA_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: cassandra-admin-credentials
+                  key: username
+            - name: CASSANDRA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cassandra-admin-credentials
+                  key: password
             # I intentionally wrote not to forget about this.
             # Currently = not needed
             # In Future = needed

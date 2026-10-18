@@ -11,32 +11,47 @@ spec:
     metadata:
       labels:
         app: cassandra-init
-
+        cassandra-client: "true"
     spec:
       restartPolicy: OnFailure
 
       containers:
         - name: cassandra-init
           image: cassandra:5.0
+          env:
+            - name: CASSANDRA_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: cassandra-admin-credentials
+                  key: username
+            - name: CASSANDRA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cassandra-admin-credentials
+                  key: password
           command:
             - /bin/sh
             - -c
             - |
-              set -e
+              set -eu
 
               echo "Waiting for Cassandra..."
 
-              until cqlsh cassandra-headless 9042 -e "DESCRIBE KEYSPACES" >/dev/null 2>&1
+              until cqlsh cassandra-headless 9042 \
+                -u "$CASSANDRA_USERNAME" \
+                -p "$CASSANDRA_PASSWORD" \
+                -e "DESCRIBE KEYSPACES" >/dev/null 2>&1
               do
-                echo "Cassandra not ready..."
+                echo "Cassandra not ready or authentication not available..."
                 sleep 5
               done
 
-              echo "Cassandra ready."
+              echo "Cassandra ready and authentication successful."
+              echo "Creating keyspace and tables..."
 
-              echo "Creating keyspace..."
-
-              cqlsh cassandra-headless 9042 <<'CQL'
+              cqlsh cassandra-headless 9042 \
+                -u "$CASSANDRA_USERNAME" \
+                -p "$CASSANDRA_PASSWORD" <<'CQL'
 
               CREATE KEYSPACE IF NOT EXISTS logging
               WITH replication = {
@@ -57,7 +72,6 @@ spec:
                   log_level text,
                   message text,
                   attributes map<text, text>,
-
                   PRIMARY KEY ((host, log_id))
               );
 
@@ -69,7 +83,6 @@ spec:
                   host text,
                   service_name text,
                   message text,
-
                   PRIMARY KEY ((log_level, log_date, host), timestamp, log_id)
               ) WITH CLUSTERING ORDER BY (timestamp DESC);
 
@@ -85,7 +98,6 @@ spec:
                   namespace text,
                   pod_name text,
                   trace_id text,
-
                   PRIMARY KEY ((service_name, log_date, host), timestamp, log_id)
               ) WITH CLUSTERING ORDER BY (timestamp DESC);
 
@@ -97,7 +109,6 @@ spec:
                   service_name text,
                   log_level text,
                   message text,
-
                   PRIMARY KEY ((trace_id, host), timestamp, log_id)
               ) WITH CLUSTERING ORDER BY (timestamp DESC);
 

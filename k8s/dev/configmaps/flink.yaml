@@ -7,6 +7,7 @@ metadata:
 data:
   config.yaml: |
     # ---- Cluster ----
+    jobmanager.rpc.address: flink-jobmanager
     jobmanager.rpc.port: 6123
     jobmanager.bind-host: 0.0.0.0
     jobmanager.memory.process.size: 1024m
@@ -14,6 +15,7 @@ data:
     taskmanager.bind-host: 0.0.0.0
     taskmanager.memory.process.size: 2048m
     taskmanager.numberOfTaskSlots: 4
+    env.java.opts.all: "--add-opens=java.base/java.util=ALL-UNNAMED"
     blob.server.port: 6124
     rest.port: 8081
     rest.bind-address: 0.0.0.0
@@ -24,10 +26,14 @@ data:
     parallelism.default: 4
 
     # ---- Kubernetes HA (leader election in ConfigMaps, metadata on MinIO) ----
+    kubernetes.namespace: dev
     kubernetes.cluster-id: log-processing
-    high-availability.type: kubernetes
-    high-availability.storageDir: s3://flink/ha
-
+    high-availability.type: none
+    # high-availability.storageDir: s3://flink/ha
+    # high-availability.kubernetes.leader-election.lease-duration: 60 s
+    # high-availability.kubernetes.leader-election.renew-deadline: 30 s
+    # high-availability.kubernetes.leader-election.retry-period: 5 s
+        
     # ---- State / checkpoints / savepoints (MinIO bucket "flink") ----
     # hashmap is fine for mostly-stateless pipelines; switch to rocksdb for large keyed state.
     state.backend.type: hashmap

@@ -3,65 +3,89 @@ kind: StatefulSet
 metadata:
   name: cassandra
   labels:
-    app: cassandra
+    app.kubernetes.io/name: cassandra
+    app.kubernetes.io/component: database
 spec:
+  replicas: 1
   serviceName: cassandra-headless
-  replicas: 3
   podManagementPolicy: OrderedReady
   updateStrategy:
     type: RollingUpdate
+  minReadySeconds: 60
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
   selector:
     matchLabels:
-      app: cassandra
+      app.kubernetes.io/name: cassandra
   template:
     metadata:
       labels:
-        app: cassandra
+        app.kubernetes.io/name: cassandra
+        app.kubernetes.io/component: database
     spec:
-      terminationGracePeriodSeconds: 600
+      serviceAccountName: cassandra
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 1800
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
       affinity:
         podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                labelSelector:
-                  matchLabels:
-                    app: cassandra
-                topologyKey: kubernetes.io/hostname
-      initContainers:
-        - name: init-sysctl
-          image: busybox:1.36
-          securityContext:
-            privileged: true
-          command: ["sh", "-c", "sysctl -w vm.max_map_count=1048575"]
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: cassandra
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: cassandra
       containers:
         - name: cassandra
           image: cassandra:5.0
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "/scripts/entrypoint.sh"]
           ports:
             - name: intra-node
               containerPort: 7000
-            - name: tls-intra-node
-              containerPort: 7001
-            - name: jmx
-              containerPort: 7199
             - name: cql
               containerPort: 9042
           envFrom:
             - configMapRef:
-                name: cassandra
+                name: cassandra-config
           env:
             - name: POD_IP
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
-            - name: CASSANDRA_SEEDS
-              value: "cassandra-0.cassandra-headless"
             - name: CASSANDRA_LISTEN_ADDRESS
               value: "$(POD_IP)"
             - name: CASSANDRA_BROADCAST_ADDRESS
               value: "$(POD_IP)"
-            - name: CASSANDRA_BROADCAST_RPC_ADDRESS
-              value: "$(POD_IP)"
+            - name: CASSANDRA_USER
+              valueFrom:
+                secretKeyRef:
+                  name: cassandra-admin-credentials
+                  key: username
+            - name: CASSANDRA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cassandra-admin-credentials
+                  key: password
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           resources:
             requests:
               cpu: "500m"
@@ -69,39 +93,54 @@ spec:
             limits:
               cpu: "1500m"
               memory: "2Gi"
-          volumeMounts:
-            - name: cassandra-data
-              mountPath: /var/lib/cassandra
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "nodetool drain"]
+          startupProbe:
+            exec:
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  nodetool status 2>/dev/null | grep -qE "^UN\s+${POD_IP}\s"
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 180
           readinessProbe:
             exec:
               command:
                 - /bin/bash
                 - -c
-                - "nodetool status | grep -E \"^UN\\s+$POD_IP\""
-            initialDelaySeconds: 60
-            periodSeconds: 30
+                - |
+                  nodetool status 2>/dev/null | grep -qE "^UN\s+${POD_IP}\s"
+            periodSeconds: 15
             timeoutSeconds: 10
-            failureThreshold: 5
+            failureThreshold: 3
           livenessProbe:
             tcpSocket:
-              port: 9042
-            initialDelaySeconds: 90
-            periodSeconds: 30
+              port: intra-node
+            periodSeconds: 20
             timeoutSeconds: 5
-            failureThreshold: 5
-          lifecycle:
-            preStop:
-              exec:
-                command: ["/bin/bash", "-c", "nodetool drain"]
-      volumes: []
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/cassandra
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+      volumes:
+        - name: scripts
+          configMap:
+            name: cassandra-scripts
+            defaultMode: 0555
   volumeClaimTemplates:
     - metadata:
-        name: cassandra-data
+        name: data
         labels:
-          app: cassandra
+          app.kubernetes.io/name: cassandra
       spec:
         accessModes: ["ReadWriteOnce"]
-        storageClassName: standard
         resources:
           requests:
             storage: 10Gi
@@ -109,12 +148,11 @@ spec:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: cassandra-pdb
+  name: cassandra
   labels:
-    app: cassandra
+    app.kubernetes.io/name: cassandra
 spec:
-  # With replicas: 3 and RF=3, losing 2 at once breaks QUORUM reads/writes.
   maxUnavailable: 1
   selector:
     matchLabels:
-      app: cassandra
+      app.kubernetes.io/name: cassandra

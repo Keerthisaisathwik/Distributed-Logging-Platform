@@ -81,8 +81,8 @@ public class LogProcessingJob {
         NetworkConfig networkConfig =
                 new NetworkConfig(
                         List.of(new HttpHost(esHost, esPort)),
-                        null,
-                        null,
+                        AppConfig.load().getElasticUsername(),
+                        AppConfig.load().getElasticPassword(),
                         Collections.emptyList(),
                         null,
                         null,
@@ -105,7 +105,9 @@ public class LogProcessingJob {
                 AppConfig.load().getCassandraMaxBatchSizeBytes(),
                 AppConfig.load().getCassandraFlushIntervalMs(),
                 AppConfig.load().getCassandraMaxConcurrentRequests(),
-                AppConfig.load().getCassandraMaxRetries()
+                AppConfig.load().getCassandraMaxRetries(),
+                AppConfig.load().getCassandraUsername(),
+                AppConfig.load().getCassandraPassword()
         );
         logStream.addSink(cassandraSink);
 

@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-headless
+  labels:
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/component: object-storage
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: minio
+  ports:
+    - name: api
+      port: 9000
+      targetPort: api
+    - name: console
+      port: 9001
+      targetPort: console
+---
+#   S3 endpoint: http://minio.minio.svc.cluster.local:9000
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  labels:
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/component: object-storage
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: minio
+  ports:
+    - name: api
+      port: 9000
+      targetPort: api
+    - name: console
+      port: 9001
+      targetPort: console

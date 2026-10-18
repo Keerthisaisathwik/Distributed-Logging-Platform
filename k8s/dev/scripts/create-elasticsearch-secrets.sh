@@ -1,63 +1,30 @@
 #!/bin/bash
+set -euo pipefail
 
-set -e
+NAMESPACE="dev"
+POD="elasticsearch-0"
 
-NAMESPACE="${1:-dev}"
-CERT_DIR="./k8s/dev/certs"
+ELASTIC_USERNAME="elastic"
+ELASTIC_PASSWORD="elasticsearch"
 
-mkdir -p "$CERT_DIR"
+echo "===== Elasticsearch Indices ====="
 
-# Generate certificates only when they do not already exist.
-if [ ! -f "$CERT_DIR/elastic-stack-ca.p12" ] || \
-   [ ! -f "$CERT_DIR/elastic-certificates.p12" ]; then
+kubectl exec -n "$NAMESPACE" "$POD" -- \
+  curl -fsS -u "${ELASTIC_USERNAME}:${ELASTIC_PASSWORD}" \
+  "http://localhost:9200/_cat/indices?v"
 
-    echo "Generating Elasticsearch certificates for namespace: $NAMESPACE..."
+echo
+echo "===== Logs Count ====="
 
-    docker run --rm \
-      -v "$(pwd)/$CERT_DIR:/certs" \
-      docker.elastic.co/elasticsearch/elasticsearch:9.1.3 \
-      bash -c "
-        bin/elasticsearch-certutil ca \
-          --silent \
-          --out /certs/elastic-stack-ca.p12 \
-          --pass '' \
-          --days 3650
+kubectl exec -n "$NAMESPACE" "$POD" -- \
+  curl -fsS -u "${ELASTIC_USERNAME}:${ELASTIC_PASSWORD}" \
+  "http://localhost:9200/logs/_count?pretty"
 
-        bin/elasticsearch-certutil cert \
-          --silent \
-          --ca /certs/elastic-stack-ca.p12 \
-          --ca-pass '' \
-          --name elasticsearch \
-          --dns \"elasticsearch,elasticsearch.${NAMESPACE}.svc.cluster.local,elasticsearch-headless,elasticsearch-headless.${NAMESPACE}.svc.cluster.local,*.elasticsearch-headless.${NAMESPACE}.svc.cluster.local,localhost\" \
-          --ip \"127.0.0.1\" \
-          --out /certs/elastic-certificates.p12 \
-          --pass '' \
-          --days 1095
-      "
+echo
+echo "===== Logs Data (First 10 Documents) ====="
 
-    echo "✅ Certificates generated"
-else
-    echo "✅ Existing Elasticsearch certificates found — reusing them"
-fi
+kubectl exec -n "$NAMESPACE" "$POD" -- \
+  curl -fsS -u "${ELASTIC_USERNAME}:${ELASTIC_PASSWORD}" \
+  "http://localhost:9200/logs/_search?size=10&pretty"
 
-# Create a new password for the newly created cluster.
-ELASTIC_PASSWORD="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 24)"
-
-echo "Kubernetes namespace: $NAMESPACE"
-echo "Elasticsearch username: elastic"
-echo "Elasticsearch password: $ELASTIC_PASSWORD"
-
-kubectl create secret generic elasticsearch-credentials \
-  -n "$NAMESPACE" \
-  --from-literal=password="$ELASTIC_PASSWORD" \
-  --dry-run=client -o yaml | kubectl apply -f -
-
-kubectl create secret generic elasticsearch-certs \
-  -n "$NAMESPACE" \
-  --from-file=elastic-certificates.p12="$CERT_DIR/elastic-certificates.p12" \
-  --dry-run=client -o yaml | kubectl apply -f -
-
-unset ELASTIC_PASSWORD
-
-echo "✅ Elasticsearch password Secret created in namespace: $NAMESPACE"
-echo "✅ Elasticsearch certificate Secret created in namespace: $NAMESPACE"
+echo

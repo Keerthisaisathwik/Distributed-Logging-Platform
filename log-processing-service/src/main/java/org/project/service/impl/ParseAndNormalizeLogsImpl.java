@@ -20,10 +20,16 @@ public class ParseAndNormalizeLogsImpl implements ParseAndNormalizeLogs {
                 .name("parse-and-normalize-logs")
                 .uid("parse-and-normalize-logs");
 
+        validLogs.print("PARSED_LOG");
+
         DataStream<FailedLogEvent> failedLogs = validLogs.getSideOutput(FAILED_LOGS_TAG);
 
         //sink(new ParseResult(validLogs, failedLogs).getFailedLogs());
+        ParseResult parseResult = new ParseResult(validLogs, failedLogs);
 
-        return new ParseResult(validLogs, failedLogs).getValidLogs();
+        DataStream<FailedLogEvent> dataStreamFailedLogs = parseResult.getFailedLogs();
+        dataStreamFailedLogs.print("FAILED_LOG");
+
+        return parseResult.getValidLogs();
     }
 }
