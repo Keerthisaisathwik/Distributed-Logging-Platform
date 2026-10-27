@@ -42,12 +42,12 @@ spec:
             - name: CASSANDRA_USER
               valueFrom:
                 secretKeyRef:
-                  name: cassandra-admin-credentials
+                  name: cassandra-credentials
                   key: username
             - name: CASSANDRA_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: cassandra-admin-credentials
+                  name: cassandra-credentials
                   key: password
           securityContext:
             allowPrivilegeEscalation: false

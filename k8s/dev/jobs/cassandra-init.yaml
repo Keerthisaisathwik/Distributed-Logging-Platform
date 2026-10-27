@@ -22,12 +22,12 @@ spec:
             - name: CASSANDRA_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: cassandra-admin-credentials
+                  name: cassandra-credentials
                   key: username
             - name: CASSANDRA_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: cassandra-admin-credentials
+                  name: cassandra-credentials
                   key: password
           command:
             - /bin/sh

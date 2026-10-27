@@ -1,38 +1,30 @@
 #!/bin/bash
-set -euo pipefail
 
-NAMESPACE="dev"
-POD="cassandra-0"
+set -e
 
-CASSANDRA_USERNAME="cassandra_admin"
-CASSANDRA_PASSWORD="cassandra_admin_password"
+NAMESPACE="${1:-dev}"
 
-cql() {
-  local query="$1"
+# Cassandra credentials
+CASSANDRA_USERNAME="cassandraAdmin"
+CASSANDRA_PASSWORD="$(openssl rand -hex 24)"
 
-  kubectl exec -n "$NAMESPACE" "$POD" -- \
-    cqlsh -u "$CASSANDRA_USERNAME" \
-           -p "$CASSANDRA_PASSWORD" \
-           -e "$query"
-}
+# Reuse the existing Secret instead of accidentally rotating credentials.
+if kubectl get secret cassandra-credentials -n "$NAMESPACE" >/dev/null 2>&1; then
+    echo "✅ Existing Cassandra credentials Secret found — reusing it"
+    exit 0
+fi
 
-echo "===== Logging Tables ====="
-cql "SELECT table_name FROM system_schema.tables WHERE keyspace_name = 'logging';"
+echo "Kubernetes namespace: $NAMESPACE"
+echo "Cassandra username: $CASSANDRA_USERNAME"
+echo "Cassandra password: $CASSANDRA_PASSWORD"
 
-echo
-echo "===== Logs by ID ====="
-cql "SELECT * FROM logging.logs_by_id LIMIT 10;"
+kubectl create secret generic cassandra-credentials \
+  -n "$NAMESPACE" \
+  --from-literal=username="$CASSANDRA_USERNAME" \
+  --from-literal=password="$CASSANDRA_PASSWORD" \
+  --dry-run=client -o yaml | kubectl apply -f -
 
-echo
-echo "===== Logs by Level ====="
-cql "SELECT * FROM logging.logs_by_level LIMIT 10;"
+unset CASSANDRA_USERNAME
+unset CASSANDRA_PASSWORD
 
-echo
-echo "===== Logs by Service ====="
-cql "SELECT * FROM logging.logs_by_service LIMIT 10;"
-
-echo
-echo "===== Logs by Trace ID ====="
-cql "SELECT * FROM logging.logs_by_traceid LIMIT 10;"
-
-echo
+echo "✅ Cassandra credentials Secret created in namespace: $NAMESPACE"

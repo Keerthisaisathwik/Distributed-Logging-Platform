@@ -2,8 +2,8 @@
 
 set -e
 
-NAMESPACE="${1:-test}"
-CERT_DIR="./k8s/test/certs"
+NAMESPACE="${1:-dev}"
+CERT_DIR="./k8s/dev/certs"
 
 mkdir -p "$CERT_DIR"
 

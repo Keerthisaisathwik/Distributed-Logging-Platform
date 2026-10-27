@@ -68,12 +68,12 @@ spec:
             - name: CASSANDRA_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: cassandra-admin-credentials
+                  name: cassandra-credentials
                   key: username
             - name: CASSANDRA_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: cassandra-admin-credentials
+                  name: cassandra-credentials
                   key: password
             # I intentionally wrote not to forget about this.
             # Currently = not needed
